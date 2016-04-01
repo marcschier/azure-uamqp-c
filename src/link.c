@@ -592,7 +592,9 @@ void link_destroy(LINK_HANDLE link)
 {
 	if (link != NULL)
 	{
-		link_detach(link);
+        link->on_link_state_changed = NULL;
+        
+        link_detach(link);
 
 		session_destroy_link_endpoint(link->link_endpoint);
 		amqpvalue_destroy(link->source);
@@ -848,11 +850,9 @@ int link_detach(LINK_HANDLE link)
 	}
 	else
 	{
-		if ((link->link_state == LINK_STATE_HALF_ATTACHED) ||
+        if ((link->link_state == LINK_STATE_HALF_ATTACHED) ||
 			(link->link_state == LINK_STATE_ATTACHED))
 		{
-			link->on_link_state_changed = NULL;
-
 			if (send_detach(link, NULL) != 0)
 			{
 				result = __LINE__;
@@ -868,7 +868,9 @@ int link_detach(LINK_HANDLE link)
 			set_link_state(link, LINK_STATE_DETACHED);
 			result = 0;
 		}
-	}
+
+        link->on_link_state_changed = NULL;
+    }
 
 	return result;
 }
