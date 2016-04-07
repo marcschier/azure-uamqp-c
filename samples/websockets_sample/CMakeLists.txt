@@ -15,6 +15,8 @@ if(WIN32)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
     add_definitions(-DGB_MEASURE_MEMORY_FOR_THIS -DGB_DEBUG_ALLOC)
 
+if(${use_wsio})
+
     target_link_libraries(websockets_sample
         uamqp
         ws2_32
@@ -23,6 +25,13 @@ if(WIN32)
         websockets)
     file(COPY $ENV{OpenSSLDir}/bin/libeay32.dll DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)
     file(COPY $ENV{OpenSSLDir}/bin/ssleay32.dll DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Debug)
+else()
+
+    target_link_libraries(websockets_sample uamqp winhttp aziotsharedutil)
+
+endif()
+
+
 else()
     target_link_libraries(websockets_sample	uamqp aziotsharedutil ssl crypto websockets)
 endif()
