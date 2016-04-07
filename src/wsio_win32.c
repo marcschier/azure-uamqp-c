@@ -429,50 +429,50 @@ inline void log_winhttp_status(LOGGER_LOG logger, DWORD status, LPVOID lpvStatus
     switch (status) 
     {
     case WINHTTP_CALLBACK_STATUS_CONNECTED_TO_SERVER:
-        LOG(logger, 0, "Connected to %S.\r\n", (wchar_t*)lpvStatusInformation); break;
+        LOG(logger, LOG_LINE, "Connected to %S.\r\n", (wchar_t*)lpvStatusInformation); break;
     case WINHTTP_CALLBACK_STATUS_RESOLVING_NAME: 
-        LOG(logger, 0, "Resolving %S...\r\n", (wchar_t*)lpvStatusInformation); break;
+        LOG(logger, LOG_LINE, "Resolving %S...\r\n", (wchar_t*)lpvStatusInformation); break;
     case WINHTTP_CALLBACK_STATUS_NAME_RESOLVED: 
-        LOG(logger, 0, "Resolved (%S).\r\n", lpvStatusInformation ? (wchar_t*)lpvStatusInformation : L"???"); break;
+        LOG(logger, LOG_LINE, "Resolved (%S).\r\n", lpvStatusInformation ? (wchar_t*)lpvStatusInformation : L"???"); break;
     case WINHTTP_CALLBACK_STATUS_CONNECTING_TO_SERVER:
-        LOG(logger, 0, "Connecting to %S...\r\n", (wchar_t*)lpvStatusInformation); break;
+        LOG(logger, LOG_LINE, "Connecting to %S...\r\n", (wchar_t*)lpvStatusInformation); break;
     case WINHTTP_CALLBACK_STATUS_SENDING_REQUEST:
-        LOG(logger, 0, "Sending Request...\r\n"); break;
+        LOG(logger, LOG_LINE, "Sending Request...\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_REQUEST_SENT:
-        LOG(logger, 0, "   Sent %d bytes ...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
+        LOG(logger, LOG_LINE, "   Sent %d bytes ...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
     case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:
-        LOG(logger, 0, "Request sent.\r\n"); break;
+        LOG(logger, LOG_LINE, "Request sent.\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_RECEIVING_RESPONSE:
-        LOG(logger, 0, "Receiving Response...\r\n"); break;
+        LOG(logger, LOG_LINE, "Receiving Response...\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_RESPONSE_RECEIVED:
-        LOG(logger, 0, "   Received %d bytes ...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
+        LOG(logger, LOG_LINE, "   Received %d bytes ...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
     case WINHTTP_CALLBACK_STATUS_CLOSING_CONNECTION:
-        LOG(logger, 0, "Closing connection...\r\n"); break;
+        LOG(logger, LOG_LINE, "Closing connection...\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_CONNECTION_CLOSED:
-        LOG(logger, 0, "Connection closed.\r\n"); break;
+        LOG(logger, LOG_LINE, "Connection closed.\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_DETECTING_PROXY:
-        LOG(logger, 0, "Detecting proxy...\r\n"); break;
+        LOG(logger, LOG_LINE, "Detecting proxy...\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_REDIRECT:
-        LOG(logger, 0, "Redirecting to %S...\r\n", (wchar_t*)lpvStatusInformation); break;
+        LOG(logger, LOG_LINE, "Redirecting to %S...\r\n", (wchar_t*)lpvStatusInformation); break;
     case WINHTTP_CALLBACK_STATUS_INTERMEDIATE_RESPONSE:
-        LOG(logger, 0, "Intermediate response %d...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
+        LOG(logger, LOG_LINE, "Intermediate response %d...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
     case WINHTTP_CALLBACK_STATUS_SECURE_FAILURE:
-        LOG(logger, 0, "Secure socket failure!\r\n"); break;
+        LOG(logger, LOG_LINE, "Secure socket failure!\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_REQUEST_ERROR:
-        LOG(logger, 0, "Request error!\r\n"); break;
+        LOG(logger, LOG_LINE, "Request error!\r\n"); break;
 #ifdef _DEBUG
     case WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE:
-        LOG(logger, 0, "WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE\r\n"); break;
+        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE:
-        LOG(logger, 0, "WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE\r\n"); break;
+        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:
-        LOG(logger, 0, "WINHTTP_CALLBACK_STATUS_READ_COMPLETE\r\n"); break;
+        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_READ_COMPLETE\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE:
-        LOG(logger, 0, "WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE\r\n"); break;
+        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_CLOSE_COMPLETE:
-        LOG(logger, 0, "WINHTTP_CALLBACK_STATUS_CLOSE_COMPLETE\r\n"); break;
+        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_CLOSE_COMPLETE\r\n"); break;
     case WINHTTP_CALLBACK_STATUS_SHUTDOWN_COMPLETE:
-        LOG(logger, 0, "WINHTTP_CALLBACK_STATUS_SHUTDOWN_COMPLETE\r\n"); break;
+        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_SHUTDOWN_COMPLETE\r\n"); break;
 #endif
     }
 }
@@ -492,7 +492,7 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
 
             if (!WinHttpReceiveResponse(hInternet, 0))
             {
-                LOG(wsio_instance->logger_log, 0, "Error WinHttpReceiveResponse %d.\r\n", GetLastError());
+                LOG(wsio_instance->logger_log, LOG_LINE, "Error WinHttpReceiveResponse %d.\r\n", GetLastError());
                 set_io_state(wsio_instance, IO_STATE_ERROR);
             }
         }
@@ -505,12 +505,12 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
 
             if (!WinHttpQueryHeaders(hInternet, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &status_code, &size, NULL))
             {
-                LOG(wsio_instance->logger_log, 0, "Error WinHttpQueryHeaders %d.\r\n", GetLastError());
+                LOG(wsio_instance->logger_log, LOG_LINE, "Error WinHttpQueryHeaders %d.\r\n", GetLastError());
                 set_io_state(wsio_instance, IO_STATE_ERROR);
             }
             else if (status_code != HTTP_STATUS_SWITCH_PROTOCOLS)
             {
-                LOG(wsio_instance->logger_log, 0, "Error switching protocols.\r\n");
+                LOG(wsio_instance->logger_log, LOG_LINE, "Error switching protocols.\r\n");
                 set_io_state(wsio_instance, IO_STATE_ERROR);
             }
             else
@@ -521,12 +521,12 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                 wsio_instance->hWebSocket = WinHttpWebSocketCompleteUpgrade(hInternet, 0);
                 if (wsio_instance->hWebSocket == NULL)
                 {
-                    LOG(wsio_instance->logger_log, 0, "Failed upgrading %d.\r\n", GetLastError());
+                    LOG(wsio_instance->logger_log, LOG_LINE, "Failed upgrading %d.\r\n", GetLastError());
                     set_io_state(wsio_instance, IO_STATE_ERROR);
                 }
                 else if (!WinHttpSetOption(wsio_instance->hWebSocket, WINHTTP_OPTION_CONTEXT_VALUE, &wsio_instance, sizeof(wsio_instance)))
                 {
-                    LOG(wsio_instance->logger_log, 0, "Failed attaching context %d.\r\n", GetLastError());
+                    LOG(wsio_instance->logger_log, LOG_LINE, "Failed attaching context %d.\r\n", GetLastError());
                     WinHttpWebSocketClose(wsio_instance->hWebSocket, WINHTTP_WEB_SOCKET_ABORTED_CLOSE_STATUS, NULL, 0);
                     wsio_instance->hWebSocket = NULL;
                     set_io_state(wsio_instance, IO_STATE_ERROR);
@@ -646,7 +646,7 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
 
         else if (dwInternetStatus == WINHTTP_CALLBACK_STATUS_REQUEST_ERROR)
         {
-            LOG(wsio_instance->logger_log, 0, "Error during request %d\r\n", ((WINHTTP_ASYNC_RESULT*)lpvStatusInformation)->dwError);
+            LOG(wsio_instance->logger_log, LOG_LINE, "Error during request %d\r\n", ((WINHTTP_ASYNC_RESULT*)lpvStatusInformation)->dwError);
             set_io_state(wsio_instance, IO_STATE_ERROR);
         }
     }
@@ -736,7 +736,7 @@ CONCRETE_IO_HANDLE wsio_create(void* io_create_parameters, LOGGER_LOG logger_log
                                     result->hOpen = WinHttpOpen(NULL, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, WINHTTP_FLAG_ASYNC);
                                     if (result->hOpen == NULL || !WinHttpSetOption(result->hOpen, WINHTTP_OPTION_CONTEXT_VALUE, &result, sizeof(result)))
                                     {
-                                        LOG(result->logger_log, 0, "Error WinHttpOpen %d.\r\n", GetLastError());
+                                        LOG(result->logger_log, LOG_LINE, "Error WinHttpOpen %d.\r\n", GetLastError());
                                         wsio_destroy(result);
                                         result = NULL;
                                     }
@@ -744,7 +744,7 @@ CONCRETE_IO_HANDLE wsio_create(void* io_create_parameters, LOGGER_LOG logger_log
                                     {
                                         if (WINHTTP_INVALID_STATUS_CALLBACK == WinHttpSetStatusCallback(result->hOpen, wsio_on_status_callback, WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS, 0))
                                         {
-                                            LOG(result->logger_log, 0, "Error WinHttpSetStatusCallback %d.\r\n", GetLastError());
+                                            LOG(result->logger_log, LOG_LINE, "Error WinHttpSetStatusCallback %d.\r\n", GetLastError());
                                             wsio_destroy(result);
                                             result = NULL;
                                         }
