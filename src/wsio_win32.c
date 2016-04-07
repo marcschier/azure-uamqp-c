@@ -1163,6 +1163,7 @@ int wsio_setoption(CONCRETE_IO_HANDLE ws_io, const char* optionName, const void*
         else if (optionName[0] == 'c')
         {
             /* Cancel the work thread if it is waiting */
+            wsio_instance->wait_timeout = 0;
             Condition_Post(wsio_instance->received_io);
             result = 0;
         }
