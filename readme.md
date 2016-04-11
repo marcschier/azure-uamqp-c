@@ -43,7 +43,7 @@ git submodule update --init --recursive
 
 ## Websocket support
 
-- run "cmake .. -Dwsio:bool=ON" to enable websocket support.
+- run "cmake .. -Dwsio:bool=ON" to enable websocket support through libwebsockets.
 
 - build
 

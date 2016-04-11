@@ -19,3 +19,7 @@ add_subdirectory(saslclientio_unittests)
 if(use_wsio)
     add_subdirectory(wsio_unittests)
 endif()
+
+if(WIN32)
+    add_subdirectory(wsio_win32_unittests)
+endif()
