@@ -221,8 +221,6 @@ static void begin_receive(WSIO_INSTANCE* wsio_instance)
 static void begin_send(WSIO_INSTANCE* wsio_instance)
 {
     LIST_ITEM_HANDLE first_pending_io;
-    int result;
-
     if (wsio_instance->io_state != IO_STATE_OPEN)
     {
         LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Bad state on begin_send.\r\n");
@@ -462,7 +460,7 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
             DWORD size = sizeof(status_code);
             if (hInternet != wsio_instance->hRequest)
             {
-                LOG(wsio_instance->logger_log, LOG_LINE, "Bad handle passed, %x.\r\n", (int)hInternet);
+                LOG(wsio_instance->logger_log, LOG_LINE, "Unexpected error: Bad handle passed.\r\n");
                 set_io_state(wsio_instance, IO_STATE_ERROR);
             }
             else if (!WinHttpQueryHeaders(hInternet, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &status_code, &size, NULL))

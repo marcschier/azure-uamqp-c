@@ -355,7 +355,9 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
 		{
 			/* error */
 		}
-	}
+
+        set_link_state(link_instance, LINK_STATE_DETACHED);
+    }
 }
 
 static int send_attach(LINK_INSTANCE* link, const char* name, handle handle, role role)
