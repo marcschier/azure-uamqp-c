@@ -5,9 +5,9 @@
 #define LINK_H
 
 #include <stddef.h>
-#include "session.h"
-#include "amqpvalue.h"
-#include "amqp_definitions.h"
+#include "azure_uamqp_c/session.h"
+#include "azure_uamqp_c/amqpvalue.h"
+#include "azure_uamqp_c/amqp_definitions.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,7 +19,8 @@ typedef enum LINK_STATE_TAG
 {
 	LINK_STATE_DETACHED,
 	LINK_STATE_HALF_ATTACHED,
-	LINK_STATE_ATTACHED
+	LINK_STATE_ATTACHED,
+	LINK_STATE_ERROR
 } LINK_STATE;
 
 typedef enum LINK_TRANSFER_RESULT_TAG

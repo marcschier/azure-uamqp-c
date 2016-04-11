@@ -6,10 +6,10 @@
 #include <crtdbg.h>
 #endif
 #include <string.h>
-#include "message_sender.h"
-#include "amqpalloc.h"
+#include "azure_uamqp_c/message_sender.h"
+#include "azure_uamqp_c/amqpalloc.h"
 #include "azure_c_shared_utility/xlogging.h"
-#include "amqpvalue_to_string.h"
+#include "azure_uamqp_c/amqpvalue_to_string.h"
 
 typedef enum MESSAGE_SEND_STATE_TAG
 {
@@ -455,6 +455,12 @@ static void on_link_state_changed(void* context, LINK_STATE new_link_state, LINK
             set_message_sender_state(message_sender_instance, MESSAGE_SENDER_STATE_ERROR);
         }
         break;
+	case LINK_STATE_ERROR:
+		if (message_sender_instance->message_sender_state != MESSAGE_SENDER_STATE_ERROR)
+		{
+			set_message_sender_state(message_sender_instance, MESSAGE_SENDER_STATE_ERROR);
+		}
+		break;
 	}
 }
 

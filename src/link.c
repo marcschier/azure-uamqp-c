@@ -8,13 +8,13 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "link.h"
-#include "session.h"
-#include "amqpvalue.h"
-#include "amqp_definitions.h"
-#include "amqpalloc.h"
-#include "amqp_frame_codec.h"
-#include "consolelogger.h"
+#include "azure_uamqp_c/link.h"
+#include "azure_uamqp_c/session.h"
+#include "azure_uamqp_c/amqpvalue.h"
+#include "azure_uamqp_c/amqp_definitions.h"
+#include "azure_uamqp_c/amqpalloc.h"
+#include "azure_uamqp_c/amqp_frame_codec.h"
+#include "azure_uamqp_c/consolelogger.h"
 #include "azure_c_shared_utility/xlogging.h"
 #include "azure_c_shared_utility/list.h"
 
@@ -452,6 +452,10 @@ static void on_session_state_changed(void* context, SESSION_STATE new_session_st
 	{
 		set_link_state(link_instance, LINK_STATE_DETACHED);
 	}
+	else if (new_session_state == SESSION_STATE_ERROR)
+	{
+		set_link_state(link_instance, LINK_STATE_ERROR);
+	}
 }
 
 static void on_session_flow_on(void* context)
@@ -850,7 +854,11 @@ int link_detach(LINK_HANDLE link)
 	}
 	else
 	{
-        if ((link->link_state == LINK_STATE_HALF_ATTACHED) ||
+		if (link->link_state == LINK_STATE_ERROR)
+		{
+			result = __LINE__;
+		}
+		else if ((link->link_state == LINK_STATE_HALF_ATTACHED) ||
 			(link->link_state == LINK_STATE_ATTACHED))
 		{
 			if (send_detach(link, NULL) != 0)
@@ -860,17 +868,17 @@ int link_detach(LINK_HANDLE link)
 			else
 			{
 				set_link_state(link, LINK_STATE_DETACHED);
+				link->on_link_state_changed = NULL;
 				result = 0;
 			}
 		}
 		else
 		{
 			set_link_state(link, LINK_STATE_DETACHED);
+			link->on_link_state_changed = NULL;
 			result = 0;
 		}
-
-        link->on_link_state_changed = NULL;
-    }
+	}
 
 	return result;
 }

@@ -11,13 +11,13 @@
 #include "azure_c_shared_utility/xlogging.h"
 #include "azure_c_shared_utility/tickcounter.h"
 
-#include "connection.h"
-#include "consolelogger.h"
-#include "frame_codec.h"
-#include "amqp_frame_codec.h"
-#include "amqp_definitions.h"
-#include "amqpalloc.h"
-#include "amqpvalue_to_string.h"
+#include "azure_uamqp_c/connection.h"
+#include "azure_uamqp_c/consolelogger.h"
+#include "azure_uamqp_c/frame_codec.h"
+#include "azure_uamqp_c/amqp_frame_codec.h"
+#include "azure_uamqp_c/amqp_definitions.h"
+#include "azure_uamqp_c/amqpalloc.h"
+#include "azure_uamqp_c/amqpvalue_to_string.h"
 
 /* Requirements satisfied by the virtue of implementing the ISO:*/
 /* Codes_SRS_CONNECTION_01_088: [Any data appearing beyond the protocol header MUST match the version indicated by the protocol header.] */
@@ -606,7 +606,7 @@ static void connection_on_io_error(void* context)
 	if (connection_instance->connection_state != CONNECTION_STATE_END)
 	{
 		/* Codes_SRS_CONNECTION_01_202: [If the io notifies the connection instance of an IO_STATE_ERROR state the connection shall be closed and the state set to END.] */
-		connection_set_state(connection_instance, CONNECTION_STATE_END);
+		connection_set_state(connection_instance, CONNECTION_STATE_ERROR);
 		(void)xio_close(connection_instance->io, NULL, NULL);
 	}
 }

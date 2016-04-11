@@ -6,10 +6,10 @@
 #include <crtdbg.h>
 #endif
 #include <string.h>
-#include "session.h"
-#include "connection.h"
-#include "amqpalloc.h"
-#include "consolelogger.h"
+#include "azure_uamqp_c/session.h"
+#include "azure_uamqp_c/connection.h"
+#include "azure_uamqp_c/amqpalloc.h"
+#include "azure_uamqp_c/consolelogger.h"
 #include "azure_c_shared_utility/xlogging.h"
 
 typedef struct LINK_ENDPOINT_INSTANCE_TAG
@@ -329,6 +329,11 @@ static void on_connection_state_changed(void* context, CONNECTION_STATE new_conn
 	else if ((new_connection_state == CONNECTION_STATE_CLOSE_RCVD) || (new_connection_state == CONNECTION_STATE_END))
 	{
 		session_set_state(session_instance, SESSION_STATE_DISCARDING);
+	}
+	/* Codes_SRS_SESSION_09_001: [If the new connection state is ERROR, the state shall be switched to ERROR.] */
+	else if (new_connection_state == CONNECTION_STATE_ERROR)
+	{
+		session_set_state(session_instance, SESSION_STATE_ERROR);
 	}
 }
 
