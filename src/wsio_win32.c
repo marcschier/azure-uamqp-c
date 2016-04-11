@@ -8,8 +8,8 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include "wsio.h"
-#include "amqpalloc.h"
+#include "azure_uamqp_c/wsio.h"
+#include "azure_uamqp_c/amqpalloc.h"
 #include <windows.h>
 #include "winhttp.h"
 #include "websocket.h"
@@ -18,7 +18,6 @@
 #include "azure_c_shared_utility/xio.h"
 #include "azure_c_shared_utility/xlogging.h"
 #include "azure_c_shared_utility/list.h"
-#include "winhttp.h"
 #include "assert.h"
 
 #define DEFAULT_RECEIVE_BUFFER_SIZE 0x1000
@@ -88,8 +87,8 @@ static const IO_INTERFACE_DESCRIPTION ws_io_interface_description =
 };
 
 
-static int begin_send(WSIO_INSTANCE* wsio_instance);
-static int begin_receive(WSIO_INSTANCE* wsio_instance);
+static void begin_send(WSIO_INSTANCE* wsio_instance);
+static void begin_receive(WSIO_INSTANCE* wsio_instance);
 
 static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
 {
@@ -110,8 +109,8 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
             wsio_instance->on_io_open_complete(wsio_instance->on_io_open_complete_context, IO_OPEN_OK);
         }
 
-        (void)begin_send(wsio_instance);
-        (void)begin_receive(wsio_instance);
+        begin_send(wsio_instance);
+        begin_receive(wsio_instance);
     }
 
     else if (state == IO_STATE_CLOSING)
@@ -169,40 +168,20 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
         assert(0);
     }
 }
-
-static int pop_buffer(LIST_HANDLE io_list, LIST_ITEM_HANDLE itemhandle, WEBSOCKET_BUFFER* websocket_buffer)
+static void begin_receive(WSIO_INSTANCE* wsio_instance)
 {
-    int result;
-
-    amqpalloc_free(websocket_buffer->bytes);
-    amqpalloc_free(websocket_buffer);
-
-    if (list_remove(io_list, itemhandle) != 0)
-    {
-        result = __LINE__;
-    }
-    else
-    {
-        result = 0;
-    }
-
-    return result;
-}
-
-static int begin_receive(WSIO_INSTANCE* wsio_instance)
-{
-    int result;
-
     if (wsio_instance->io_state != IO_STATE_OPEN || wsio_instance->receive_buffer != NULL)
     {
-        result = __LINE__;
+        LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Bad state on begin_receive.\r\n");
+        set_io_state(wsio_instance, IO_STATE_ERROR);
     }
     else
     {
         wsio_instance->receive_buffer = (WEBSOCKET_BUFFER*)amqpalloc_malloc(sizeof(WEBSOCKET_BUFFER));
         if (wsio_instance->receive_buffer == NULL)
         {
-            result = __LINE__;
+            LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Receive buffer allocation failed.\r\n");
+            set_io_state(wsio_instance, IO_STATE_ERROR);
         }
         else
         {
@@ -216,7 +195,9 @@ static int begin_receive(WSIO_INSTANCE* wsio_instance)
                 /* Codes_SRS_WSIO_01_055: [If queueing the data fails (i.e. due to insufficient memory), wsio_send shall fail and return a non-zero value.] */
                 amqpalloc_free(wsio_instance->receive_buffer);
                 wsio_instance->receive_buffer = NULL;
-                result = __LINE__;
+
+                LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Receive buffer memory allocation failed.\r\n");
+                set_io_state(wsio_instance, IO_STATE_ERROR);
             }
             else
             {
@@ -229,26 +210,23 @@ static int begin_receive(WSIO_INSTANCE* wsio_instance)
                     amqpalloc_free(wsio_instance->receive_buffer);
                     wsio_instance->receive_buffer = NULL;
 
-                    result = __LINE__;
-                }
-                else
-                {
-                    result = 0;
+                    LOG(wsio_instance->logger_log, LOG_LINE, "Failure: on WinHttpWebSocketReceive.\r\n");
+                    set_io_state(wsio_instance, IO_STATE_ERROR);
                 }
             }
         }
     }
-    return result;
 }
 
-static int begin_send(WSIO_INSTANCE* wsio_instance)
+static void begin_send(WSIO_INSTANCE* wsio_instance)
 {
-    int result;
     LIST_ITEM_HANDLE first_pending_io;
+    int result;
 
     if (wsio_instance->io_state != IO_STATE_OPEN)
     {
-        result = __LINE__;
+        LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Bad state on begin_send.\r\n");
+        set_io_state(wsio_instance, IO_STATE_ERROR);
     }
     else
     {
@@ -258,60 +236,41 @@ static int begin_send(WSIO_INSTANCE* wsio_instance)
         first_pending_io = list_get_head_item(wsio_instance->pending_io_list);
         Unlock(wsio_instance->pending_io_lock);
 
-        if (first_pending_io == NULL)
-        {
-            /* Nothing to send */
-            result = 0;
-        }
-        else
+        if (first_pending_io != NULL)
         {
             WEBSOCKET_BUFFER* pending_socket_io = (WEBSOCKET_BUFFER*)list_item_get_value(first_pending_io);
             if (pending_socket_io == NULL)
             {
+                LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Pending io does not contain buffer.\r\n");
                 set_io_state(wsio_instance, IO_STATE_ERROR);
-                result = __LINE__;
             }
             else
             {
                 if (0 != WinHttpWebSocketSend(wsio_instance->hWebSocket, WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE, pending_socket_io->bytes, pending_socket_io->size))
                 {
+                    Lock(wsio_instance->pending_io_lock);
+                    (void)list_remove(wsio_instance->pending_io_list, first_pending_io);
+                    Unlock(wsio_instance->pending_io_lock);
+
                     if (pending_socket_io->on_send_complete != NULL)
                     {
                         pending_socket_io->on_send_complete(pending_socket_io->callback_context, IO_SEND_ERROR);
                     }
 
-                    Lock(wsio_instance->pending_io_lock);
-                    result = list_remove(wsio_instance->pending_io_list, first_pending_io);
-                    Unlock(wsio_instance->pending_io_lock);
-                    
-                    if (result != 0)
-                    {
-                        set_io_state(wsio_instance, IO_STATE_ERROR);
-                    }
-
                     amqpalloc_free(pending_socket_io->bytes);
                     amqpalloc_free(pending_socket_io);
-
-                    result = __LINE__;
-                }
-                else
-                {
-                    result = 0;
                 }
             }
         }
     }
-    return result;
 }
 
-static int end_receive(WSIO_INSTANCE* wsio_instance, DWORD bytes_received, bool flush)
+static void end_receive(WSIO_INSTANCE* wsio_instance, DWORD bytes_received)
 {
-    int result;
-    (void)flush;
-
     if (wsio_instance->io_state != IO_STATE_OPEN || wsio_instance->receive_buffer == NULL)
     {
-        result = __LINE__;
+        LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Bad state on end_receive.\r\n");
+        set_io_state(wsio_instance, IO_STATE_ERROR);
     }
     else
     {
@@ -325,19 +284,19 @@ static int end_receive(WSIO_INSTANCE* wsio_instance, DWORD bytes_received, bool 
         {
             amqpalloc_free(wsio_instance->receive_buffer->bytes);
             amqpalloc_free(wsio_instance->receive_buffer);
-            result = __LINE__;
+
+            LOG(wsio_instance->logger_log, LOG_LINE, "Failure: Adding adding received buffer.\r\n");
+            set_io_state(wsio_instance, IO_STATE_ERROR);
         }
         else
         {
             Condition_Post(wsio_instance->received_io);
-            result = 0;
         }
         Unlock(wsio_instance->received_io_lock);
 
         /* Ready for next */
         wsio_instance->receive_buffer = NULL;
     }
-    return result;
 }
 
 static void end_send(WSIO_INSTANCE* wsio_instance, DWORD bytes_sent)
@@ -358,7 +317,7 @@ static void end_send(WSIO_INSTANCE* wsio_instance, DWORD bytes_sent)
 
     if (pending_socket_io == NULL)
     {
-        assert(0);
+        LOG(wsio_instance->logger_log, LOG_LINE, "Failure: No pending socket io anymore.\r\n");
         set_io_state(wsio_instance, IO_STATE_ERROR);
     }
     else
@@ -501,9 +460,12 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
         {
             DWORD status_code;
             DWORD size = sizeof(status_code);
-            assert(hInternet == wsio_instance->hRequest);
-
-            if (!WinHttpQueryHeaders(hInternet, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &status_code, &size, NULL))
+            if (hInternet != wsio_instance->hRequest)
+            {
+                LOG(wsio_instance->logger_log, LOG_LINE, "Bad handle passed, %x.\r\n", (int)hInternet);
+                set_io_state(wsio_instance, IO_STATE_ERROR);
+            }
+            else if (!WinHttpQueryHeaders(hInternet, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &status_code, &size, NULL))
             {
                 LOG(wsio_instance->logger_log, LOG_LINE, "Error WinHttpQueryHeaders %d.\r\n", GetLastError());
                 set_io_state(wsio_instance, IO_STATE_ERROR);
@@ -527,14 +489,14 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                 else if (!WinHttpSetOption(wsio_instance->hWebSocket, WINHTTP_OPTION_CONTEXT_VALUE, &wsio_instance, sizeof(wsio_instance)))
                 {
                     LOG(wsio_instance->logger_log, LOG_LINE, "Failed attaching context %d.\r\n", GetLastError());
-                    WinHttpWebSocketClose(wsio_instance->hWebSocket, WINHTTP_WEB_SOCKET_ABORTED_CLOSE_STATUS, NULL, 0);
+                    (void)WinHttpWebSocketClose(wsio_instance->hWebSocket, WINHTTP_WEB_SOCKET_ABORTED_CLOSE_STATUS, NULL, 0);
                     wsio_instance->hWebSocket = NULL;
                     set_io_state(wsio_instance, IO_STATE_ERROR);
                 }
                 else
                 {
                     /* Close request handle now that we have a socket*/
-                    WinHttpCloseHandle(hInternet);
+                    (void)WinHttpCloseHandle(hInternet);
 
                     /* Now we are open for send / receive business, send any pending io and begin receiving */
                     set_io_state(wsio_instance, IO_STATE_OPEN);
@@ -554,12 +516,12 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                     case WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE:
                     case WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE:
                         /* Buffer contains either the entire message or the last part of it. */
-                        end_receive(wsio_instance, webSockStatus->dwBytesTransferred, true);
+                        end_receive(wsio_instance, webSockStatus->dwBytesTransferred);
                         break;
                     case WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE:
                     case WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE:
                         /* Buffer contains only part of a message. */
-                        end_receive(wsio_instance, webSockStatus->dwBytesTransferred, false);
+                        end_receive(wsio_instance, webSockStatus->dwBytesTransferred);
                         break;
                     case WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE:
                         /* What now? */
@@ -568,7 +530,7 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                 }
 
                 /* Continue receiving */
-                (void)begin_receive(wsio_instance);
+                begin_receive(wsio_instance);
             }
         }
 
@@ -583,10 +545,10 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
         else if (dwInternetStatus == WINHTTP_CALLBACK_STATUS_CLOSE_COMPLETE)
         {
             /* The connection was successfully closed via a call to WinHttpWebSocketClose */
-            WinHttpCloseHandle(wsio_instance->hWebSocket);
+            (void)WinHttpCloseHandle(wsio_instance->hWebSocket);
             if (wsio_instance->hOpen == NULL)
             {
-                WinHttpCloseHandle(wsio_instance->hConnect);
+                (void)WinHttpCloseHandle(wsio_instance->hConnect);
                 wsio_instance->hConnect = NULL;
             }
         }
@@ -605,7 +567,7 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
 
                 if (wsio_instance->hConnect)
                 {
-                    WinHttpCloseHandle(wsio_instance->hConnect);
+                    (void)WinHttpCloseHandle(wsio_instance->hConnect);
                 }
             }
 
@@ -641,6 +603,7 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
 
         else if (dwInternetStatus == WINHTTP_CALLBACK_STATUS_SECURE_FAILURE)
         {
+            LOG(wsio_instance->logger_log, LOG_LINE, "Failure: winhttp returned WINHTTP_CALLBACK_STATUS_SECURE_FAILURE.\r\n");
             set_io_state(wsio_instance, IO_STATE_ERROR);
         }
 
@@ -706,53 +669,77 @@ CONCRETE_IO_HANDLE wsio_create(void* io_create_parameters, LOGGER_LOG logger_log
                     }
                     else
                     {
-                        size_t string_size = MultiByteToWideChar(CP_ACP, 0, ws_io_config->host, -1, NULL, 0);
-                        result->host = (wchar_t*)amqpalloc_malloc((string_size + 1) * sizeof(wchar_t));
-                        if ((result->host == NULL) || MultiByteToWideChar(CP_ACP, 0, ws_io_config->host, -1, result->host, string_size) == 0)
+                        int string_size = MultiByteToWideChar(CP_ACP, 0, ws_io_config->host, -1, NULL, 0);
+                        if (string_size <= 0)
                         {
                             wsio_destroy(result);
                             result = NULL;
                         }
                         else
                         {
-                            string_size = MultiByteToWideChar(CP_ACP, 0, ws_io_config->protocol_name, -1, NULL, 0);
-                            result->protocol_name = (wchar_t*)amqpalloc_malloc((string_size + 1) * sizeof(wchar_t));
-                            if ((result->protocol_name == NULL) || MultiByteToWideChar(CP_ACP, 0, ws_io_config->protocol_name, -1, result->protocol_name, string_size) == 0)
+                            result->host = (wchar_t*)amqpalloc_malloc((string_size + 1) * sizeof(wchar_t));
+                            if ((result->host == NULL) || MultiByteToWideChar(CP_ACP, 0, ws_io_config->host, -1, result->host, string_size) == 0)
                             {
                                 wsio_destroy(result);
                                 result = NULL;
                             }
                             else
                             {
-                                string_size = MultiByteToWideChar(CP_ACP, 0, ws_io_config->relative_path, -1, NULL, 0);
-                                result->relative_path = (wchar_t*)amqpalloc_malloc((string_size + 1) * sizeof(wchar_t));
-                                if ((result->relative_path == NULL) || MultiByteToWideChar(CP_ACP, 0, ws_io_config->relative_path, -1, result->relative_path, string_size) == 0)
+                                string_size = MultiByteToWideChar(CP_ACP, 0, ws_io_config->protocol_name, -1, NULL, 0);
+                                if (string_size <= 0)
                                 {
                                     wsio_destroy(result);
                                     result = NULL;
                                 }
                                 else
                                 {
-                                    result->hOpen = WinHttpOpen(NULL, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, WINHTTP_FLAG_ASYNC);
-                                    if (result->hOpen == NULL || !WinHttpSetOption(result->hOpen, WINHTTP_OPTION_CONTEXT_VALUE, &result, sizeof(result)))
+                                    result->protocol_name = (wchar_t*)amqpalloc_malloc((string_size + 1) * sizeof(wchar_t));
+                                    if ((result->protocol_name == NULL) || MultiByteToWideChar(CP_ACP, 0, ws_io_config->protocol_name, -1, result->protocol_name, string_size) == 0)
                                     {
-                                        LOG(result->logger_log, LOG_LINE, "Error WinHttpOpen %d.\r\n", GetLastError());
                                         wsio_destroy(result);
                                         result = NULL;
                                     }
                                     else
                                     {
-                                        if (WINHTTP_INVALID_STATUS_CALLBACK == WinHttpSetStatusCallback(result->hOpen, wsio_on_status_callback, WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS, 0))
+                                        string_size = MultiByteToWideChar(CP_ACP, 0, ws_io_config->relative_path, -1, NULL, 0);
+                                        if (string_size <= 0)
                                         {
-                                            LOG(result->logger_log, LOG_LINE, "Error WinHttpSetStatusCallback %d.\r\n", GetLastError());
                                             wsio_destroy(result);
                                             result = NULL;
                                         }
                                         else
                                         {
-                                            /* Success, declare us created but not open */
-                                            result->port = ws_io_config->port;
-                                            result->io_state = IO_STATE_NOT_OPEN;
+                                            result->relative_path = (wchar_t*)amqpalloc_malloc((string_size + 1) * sizeof(wchar_t));
+                                            if ((result->relative_path == NULL) || MultiByteToWideChar(CP_ACP, 0, ws_io_config->relative_path, -1, result->relative_path, string_size) == 0)
+                                            {
+                                                wsio_destroy(result);
+                                                result = NULL;
+                                            }
+                                            else
+                                            {
+                                                result->hOpen = WinHttpOpen(NULL, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, NULL, NULL, WINHTTP_FLAG_ASYNC);
+                                                if (result->hOpen == NULL || !WinHttpSetOption(result->hOpen, WINHTTP_OPTION_CONTEXT_VALUE, &result, sizeof(result)))
+                                                {
+                                                    LOG(result->logger_log, LOG_LINE, "Error WinHttpOpen %d.\r\n", GetLastError());
+                                                    wsio_destroy(result);
+                                                    result = NULL;
+                                                }
+                                                else
+                                                {
+                                                    if (WINHTTP_INVALID_STATUS_CALLBACK == WinHttpSetStatusCallback(result->hOpen, wsio_on_status_callback, WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS, 0))
+                                                    {
+                                                        LOG(result->logger_log, LOG_LINE, "Error WinHttpSetStatusCallback %d.\r\n", GetLastError());
+                                                        wsio_destroy(result);
+                                                        result = NULL;
+                                                    }
+                                                    else
+                                                    {
+                                                        /* Success, declare us created but not open */
+                                                        result->port = ws_io_config->port;
+                                                        result->io_state = IO_STATE_NOT_OPEN;
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -782,7 +769,7 @@ void wsio_destroy(CONCRETE_IO_HANDLE ws_io)
             DWORD_PTR null = 0;
             (void)WinHttpSetOption(wsio_instance->hConnect, WINHTTP_OPTION_CONTEXT_VALUE, &null, sizeof(null));
 
-            WinHttpCloseHandle(wsio_instance->hOpen);
+            (void)WinHttpCloseHandle(wsio_instance->hOpen);
             wsio_instance->hOpen = NULL;
         }
 
@@ -876,7 +863,7 @@ int wsio_open(CONCRETE_IO_HANDLE ws_io, ON_IO_OPEN_COMPLETE on_io_open_complete,
             {
                 if (0 == WinHttpSetOption(wsio_instance->hConnect, WINHTTP_OPTION_CONTEXT_VALUE, &wsio_instance, sizeof(wsio_instance)))
                 {
-                    WinHttpCloseHandle(wsio_instance->hConnect);
+                    (void)WinHttpCloseHandle(wsio_instance->hConnect);
                     wsio_instance->hConnect = NULL;
                     result = __LINE__;
                 }
@@ -885,7 +872,7 @@ int wsio_open(CONCRETE_IO_HANDLE ws_io, ON_IO_OPEN_COMPLETE on_io_open_complete,
                     wsio_instance->hRequest = WinHttpOpenRequest(wsio_instance->hConnect, L"GET", wsio_instance->relative_path, NULL, NULL, NULL, WINHTTP_FLAG_SECURE);
                     if (wsio_instance->hRequest == NULL)
                     {
-                        WinHttpCloseHandle(wsio_instance->hConnect);
+                        (void)WinHttpCloseHandle(wsio_instance->hConnect);
                         wsio_instance->hConnect = NULL;
                         result = __LINE__;
                     }
@@ -913,8 +900,8 @@ int wsio_open(CONCRETE_IO_HANDLE ws_io, ON_IO_OPEN_COMPLETE on_io_open_complete,
                                     !WinHttpSetOption(wsio_instance->hRequest, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, NULL, 0) ||
                                     !WinHttpAddRequestHeaders(wsio_instance->hRequest, protocol_header, -1, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE))
                                 {
-                                    WinHttpCloseHandle(wsio_instance->hRequest);
-                                    WinHttpCloseHandle(wsio_instance->hConnect);
+                                    (void)WinHttpCloseHandle(wsio_instance->hRequest);
+                                    (void)WinHttpCloseHandle(wsio_instance->hConnect);
                                     wsio_instance->hRequest = NULL;
                                     wsio_instance->hConnect = NULL;
                                     result = __LINE__;
@@ -925,8 +912,8 @@ int wsio_open(CONCRETE_IO_HANDLE ws_io, ON_IO_OPEN_COMPLETE on_io_open_complete,
 
                                     if (0 == WinHttpSendRequest(wsio_instance->hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, NULL, 0, 0, 0))
                                     {
-                                        WinHttpCloseHandle(wsio_instance->hRequest);
-                                        WinHttpCloseHandle(wsio_instance->hConnect);
+                                        (void)WinHttpCloseHandle(wsio_instance->hRequest);
+                                        (void)WinHttpCloseHandle(wsio_instance->hConnect);
                                         wsio_instance->hRequest = NULL;
                                         wsio_instance->hConnect = NULL;
 
@@ -1013,19 +1000,19 @@ int wsio_close(CONCRETE_IO_HANDLE ws_io, ON_IO_CLOSE_COMPLETE on_io_close_comple
             if (wsio_instance->hWebSocket != NULL)
             {
                 /* We are connected, close the web socket, which will clean up the other handles */
-                WinHttpWebSocketClose(wsio_instance->hWebSocket, WINHTTP_WEB_SOCKET_ENDPOINT_TERMINATED_CLOSE_STATUS, NULL, 0);
+                (void)WinHttpWebSocketClose(wsio_instance->hWebSocket, WINHTTP_WEB_SOCKET_ENDPOINT_TERMINATED_CLOSE_STATUS, NULL, 0);
             }
             else
             {
                 /* We are not connected but in the process of connecting, close the request and connection */
                 if (wsio_instance->hRequest)
                 {
-                    WinHttpCloseHandle(wsio_instance->hRequest);
+                    (void)WinHttpCloseHandle(wsio_instance->hRequest);
                 }
 
                 if (wsio_instance->hConnect)
                 {
-                    WinHttpCloseHandle(wsio_instance->hConnect);
+                    (void)WinHttpCloseHandle(wsio_instance->hConnect);
                 }
             }
 
@@ -1074,7 +1061,16 @@ int wsio_send(CONCRETE_IO_HANDLE ws_io, const void* buffer, size_t size, ON_SEND
             else if (send_queue_empty)
             {
                 /* if list was empty, then no send can be in progress yet and we have to kick it off */
-                result = begin_send(wsio_instance);
+                begin_send(wsio_instance);
+
+                if (wsio_instance->io_state != IO_STATE_OPEN)
+                {
+                    result = __LINE__;
+                }
+                else
+                {
+                    result = 0;
+                }
             }
         }
     }
@@ -1101,11 +1097,7 @@ void wsio_dowork(CONCRETE_IO_HANDLE ws_io)
             if (first_received_io == NULL && wsio_instance->wait_timeout > 0)
             {
                 /* Wait until io received or timeout */
-                if (COND_ERROR == Condition_Wait(wsio_instance->received_io, wsio_instance->received_io_lock, wsio_instance->wait_timeout))
-                {
-                    /* Do we have the lock again ??? */
-                }
-
+                (void)Condition_Wait(wsio_instance->received_io, wsio_instance->received_io_lock, wsio_instance->wait_timeout);
                 first_received_io = list_get_head_item(wsio_instance->received_io_list);
             }
 
@@ -1137,7 +1129,6 @@ void wsio_dowork(CONCRETE_IO_HANDLE ws_io)
     }
 }
 
-/* Codes_SRS_WSIO_03_001: [wsio_setoption does not support any options and shall always return non-zero value.] */
 int wsio_setoption(CONCRETE_IO_HANDLE ws_io, const char* optionName, const void* value)
 {
     int result;
