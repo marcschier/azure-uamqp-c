@@ -111,7 +111,7 @@ extern int saslclientio_setoption(CONCRETE_IO_HANDLE socket_io, const char* opti
 ```C
 extern const IO_INTERFACE_DESCRIPTION* saslclientio_get_interface_description(void);
 ```
-**SRS_SASLCLIENTIO_01_087: [**saslclientio_get_interface_description shall return a pointer to an IO_INTERFACE_DESCRIPTION structure that contains pointers to the functions: saslclientio_create, saslclientio_destroy, saslclientio_open, saslclientio_close, saslclientio_send, saslclientio_control and saslclientio_dowork.**]** 
+**SRS_SASLCLIENTIO_01_087: [**saslclientio_get_interface_description shall return a pointer to an IO_INTERFACE_DESCRIPTION structure that contains pointers to the functions: saslclientio_create, saslclientio_destroy, saslclientio_open, saslclientio_close, saslclientio_send, saslclientio_setoptions and saslclientio_dowork.**]** 
 
 ###on_bytes_received
 
