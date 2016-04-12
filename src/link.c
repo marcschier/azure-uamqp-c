@@ -351,12 +351,32 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
 	}
 	else if (is_detach_type_by_descriptor(descriptor))
 	{
-		if (send_detach_frame(link_instance, NULL) != 0)
-		{
-			/* error */
-		}
+        DETACH_HANDLE detach;
 
-        set_link_state(link_instance, LINK_STATE_DETACHED);
+        /* Respond with ack */
+        (void)send_detach_frame(link_instance, NULL);
+
+        /* Set link state appropriately based on whether we received detach condition */
+        if (amqpvalue_get_detach(performative, &detach) == 0)
+        {
+            ERROR_HANDLE error;
+            if (detach_get_error(detach, &error) == 0)
+            {
+                /*
+                const char* condition = NULL;
+                const char* description = NULL;
+
+                (void)error_get_condition(error, &condition);
+                (void)error_get_description(error, &description);
+                */
+
+                set_link_state(link_instance, LINK_STATE_ERROR);
+            }
+            else
+            {
+                set_link_state(link_instance, LINK_STATE_DETACHED);
+            }
+        }
     }
 }
 
