@@ -514,7 +514,6 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                     (void)WinHttpCloseHandle(wsio_instance->hConnect);
                 }
             }
-
             else if (wsio_instance->hRequest == hInternet)
             {
                 wsio_instance->hRequest = NULL;
@@ -529,7 +528,6 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                     /* The upgrade went through and the request is released */
                 }
             }
-
             else if (wsio_instance->hConnect == hInternet)
             {
                 wsio_instance->hConnect = NULL;
@@ -537,11 +535,12 @@ static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwCo
                 /* Connection fully closed, transition back to not open */
                 set_io_state(wsio_instance, IO_STATE_NOT_OPEN);
             }
-
-            else
+            else if (wsio_instance->hOpen == hInternet)
             {
-                /* This should not happen as for hOpen we unregistered the context */
-                assert(0);
+                wsio_instance->hOpen = NULL;
+
+                /* hOpen fully closed, free instance */
+                amqpalloc_free(wsio_instance);
             }
         }
 
@@ -713,15 +712,6 @@ void wsio_destroy(CONCRETE_IO_HANDLE ws_io)
         else
         {
             /* Codes_SRS_WSIO_01_007: [wsio_destroy shall free all resources associated with the wsio instance.] */
-            if (wsio_instance->hOpen != NULL)
-            {
-                DWORD_PTR null = 0;
-                (void)WinHttpSetOption(wsio_instance->hConnect, WINHTTP_OPTION_CONTEXT_VALUE, &null, sizeof(null));
-
-                (void)WinHttpCloseHandle(wsio_instance->hOpen);
-                wsio_instance->hOpen = NULL;
-            }
-
             if (wsio_instance->host != NULL)
             {
                 amqpalloc_free(wsio_instance->host);
@@ -770,7 +760,17 @@ void wsio_destroy(CONCRETE_IO_HANDLE ws_io)
                 wsio_instance->received_io = NULL;
             }
 
-            amqpalloc_free(ws_io);
+            if (wsio_instance->hOpen != NULL)
+            {
+                if (!WinHttpCloseHandle(wsio_instance->hOpen))
+                {
+                    amqpalloc_free(wsio_instance);
+                }
+                else
+                {
+                    /* Instance is freed in callback */
+                }
+            }
         }
     }
 }
