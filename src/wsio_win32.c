@@ -71,6 +71,7 @@ typedef struct WSIO_INSTANCE_TAG
     LOCK_HANDLE received_io_lock;
     LIST_HANDLE received_io_list;
     WEBSOCKET_BUFFER* receive_buffer;
+    bool destroy_on_close;
 
 } WSIO_INSTANCE;
 
@@ -97,7 +98,6 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
         assert(wsio_instance->io_state == IO_STATE_NOT_OPEN);
         wsio_instance->io_state = IO_STATE_OPENING;
     }
-
     else if (state == IO_STATE_OPEN)
     {
         assert(wsio_instance->hWebSocket != NULL);
@@ -112,7 +112,6 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
         begin_send(wsio_instance);
         begin_receive(wsio_instance);
     }
-
     else if (state == IO_STATE_CLOSING)
     {
         if (wsio_instance->io_state != IO_STATE_OPEN && wsio_instance->io_state != IO_STATE_ERROR)
@@ -123,7 +122,6 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
 
         wsio_instance->io_state = IO_STATE_CLOSING;
     }
-
     else if (state == IO_STATE_NOT_OPEN)
     {
         assert(wsio_instance->hConnect == NULL);
@@ -139,8 +137,12 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
         {
             wsio_instance->on_io_close_complete(wsio_instance->on_io_close_complete_context);
         }
-    }
 
+        if (wsio_instance->destroy_on_close)
+        {
+            wsio_destroy(wsio_instance);
+        }
+    }
     else if (state == IO_STATE_ERROR)
     {
         if (wsio_instance->io_state == IO_STATE_OPENING)
@@ -162,12 +164,12 @@ static void set_io_state(WSIO_INSTANCE* wsio_instance, IO_STATE state)
             }
         }
     }
-
     else 
     {
         assert(0);
     }
 }
+
 static void begin_receive(WSIO_INSTANCE* wsio_instance)
 {
     if (wsio_instance->io_state != IO_STATE_OPEN || wsio_instance->receive_buffer != NULL)
@@ -381,68 +383,12 @@ static int queue_buffer(LIST_HANDLE io_list, const unsigned char* buffer, size_t
     return result;
 }
 
-inline void log_winhttp_status(LOGGER_LOG logger, DWORD status, LPVOID lpvStatusInformation, DWORD dwStatusInformationLength) 
-{
-    switch (status) 
-    {
-    case WINHTTP_CALLBACK_STATUS_CONNECTED_TO_SERVER:
-        LOG(logger, LOG_LINE, "Connected to %S.\r\n", (wchar_t*)lpvStatusInformation); break;
-    case WINHTTP_CALLBACK_STATUS_RESOLVING_NAME: 
-        LOG(logger, LOG_LINE, "Resolving %S...\r\n", (wchar_t*)lpvStatusInformation); break;
-    case WINHTTP_CALLBACK_STATUS_NAME_RESOLVED: 
-        LOG(logger, LOG_LINE, "Resolved (%S).\r\n", lpvStatusInformation ? (wchar_t*)lpvStatusInformation : L"???"); break;
-    case WINHTTP_CALLBACK_STATUS_CONNECTING_TO_SERVER:
-        LOG(logger, LOG_LINE, "Connecting to %S...\r\n", (wchar_t*)lpvStatusInformation); break;
-    case WINHTTP_CALLBACK_STATUS_SENDING_REQUEST:
-        LOG(logger, LOG_LINE, "Sending Request...\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_REQUEST_SENT:
-        LOG(logger, LOG_LINE, "   Sent %d bytes ...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
-    case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:
-        LOG(logger, LOG_LINE, "Request sent.\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_RECEIVING_RESPONSE:
-        LOG(logger, LOG_LINE, "Receiving Response...\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_RESPONSE_RECEIVED:
-        LOG(logger, LOG_LINE, "   Received %d bytes ...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
-    case WINHTTP_CALLBACK_STATUS_CLOSING_CONNECTION:
-        LOG(logger, LOG_LINE, "Closing connection...\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_CONNECTION_CLOSED:
-        LOG(logger, LOG_LINE, "Connection closed.\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_DETECTING_PROXY:
-        LOG(logger, LOG_LINE, "Detecting proxy...\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_REDIRECT:
-        LOG(logger, LOG_LINE, "Redirecting to %S...\r\n", (wchar_t*)lpvStatusInformation); break;
-    case WINHTTP_CALLBACK_STATUS_INTERMEDIATE_RESPONSE:
-        LOG(logger, LOG_LINE, "Intermediate response %d...\r\n", (int)(*(DWORD*)lpvStatusInformation)); break;
-    case WINHTTP_CALLBACK_STATUS_SECURE_FAILURE:
-        LOG(logger, LOG_LINE, "Secure socket failure!\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_REQUEST_ERROR:
-        LOG(logger, LOG_LINE, "Request error!\r\n"); break;
-#ifdef _DEBUG
-    case WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE:
-        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE:
-        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:
-        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_READ_COMPLETE\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE:
-        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_CLOSE_COMPLETE:
-        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_CLOSE_COMPLETE\r\n"); break;
-    case WINHTTP_CALLBACK_STATUS_SHUTDOWN_COMPLETE:
-        LOG(logger, LOG_LINE, "WINHTTP_CALLBACK_STATUS_SHUTDOWN_COMPLETE\r\n"); break;
-#endif
-    }
-}
-
 static void CALLBACK wsio_on_status_callback(HINTERNET hInternet, DWORD_PTR dwContext, DWORD dwInternetStatus, LPVOID lpvStatusInformation, DWORD dwStatusInformationLength)
 {
     WSIO_INSTANCE* wsio_instance = (WSIO_INSTANCE*)dwContext;
 
     if (wsio_instance != NULL)
     {
-#ifdef _DEBUG
-        log_winhttp_status(wsio_instance->logger_log, dwInternetStatus, lpvStatusInformation, dwStatusInformationLength);
-#endif 
         if (dwInternetStatus == WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE)
         {
             assert(hInternet == wsio_instance->hRequest);
@@ -759,67 +705,73 @@ void wsio_destroy(CONCRETE_IO_HANDLE ws_io)
         WSIO_INSTANCE* wsio_instance = (WSIO_INSTANCE*)ws_io;
 
         /* Codes_SRS_WSIO_01_009: [wsio_destroy shall execute a close action if the IO has already been open or an open action is already pending.] */
-        (void)wsio_close(wsio_instance, NULL, NULL);
-        
-        /* Codes_SRS_WSIO_01_007: [wsio_destroy shall free all resources associated with the wsio instance.] */
-        if (wsio_instance->hOpen != NULL)
+        if (wsio_instance->io_state != IO_STATE_NOT_OPEN)
         {
-            DWORD_PTR null = 0;
-            (void)WinHttpSetOption(wsio_instance->hConnect, WINHTTP_OPTION_CONTEXT_VALUE, &null, sizeof(null));
-
-            (void)WinHttpCloseHandle(wsio_instance->hOpen);
-            wsio_instance->hOpen = NULL;
+            wsio_instance->destroy_on_close = true;
+            (void)wsio_close(wsio_instance, NULL, NULL);
         }
-
-        if (wsio_instance->host != NULL)
+        else
         {
-            amqpalloc_free(wsio_instance->host);
-            wsio_instance->host = NULL;
-        }
+            /* Codes_SRS_WSIO_01_007: [wsio_destroy shall free all resources associated with the wsio instance.] */
+            if (wsio_instance->hOpen != NULL)
+            {
+                DWORD_PTR null = 0;
+                (void)WinHttpSetOption(wsio_instance->hConnect, WINHTTP_OPTION_CONTEXT_VALUE, &null, sizeof(null));
 
-        if (wsio_instance->relative_path != NULL)
-        {
-            amqpalloc_free(wsio_instance->relative_path);
-            wsio_instance->relative_path = NULL;
-        }
+                (void)WinHttpCloseHandle(wsio_instance->hOpen);
+                wsio_instance->hOpen = NULL;
+            }
 
-        if (wsio_instance->protocol_name != NULL)
-        {
-            amqpalloc_free(wsio_instance->protocol_name);
-            wsio_instance->protocol_name = NULL;
-        }
+            if (wsio_instance->host != NULL)
+            {
+                amqpalloc_free(wsio_instance->host);
+                wsio_instance->host = NULL;
+            }
 
-        if (wsio_instance->received_io_list != NULL)
-        {
-            list_destroy(wsio_instance->received_io_list);
-            wsio_instance->received_io_list = NULL;
-        }
+            if (wsio_instance->relative_path != NULL)
+            {
+                amqpalloc_free(wsio_instance->relative_path);
+                wsio_instance->relative_path = NULL;
+            }
 
-        if (wsio_instance->pending_io_list != NULL)
-        {
-            list_destroy(wsio_instance->pending_io_list);
-            wsio_instance->pending_io_list = NULL;
-        }
+            if (wsio_instance->protocol_name != NULL)
+            {
+                amqpalloc_free(wsio_instance->protocol_name);
+                wsio_instance->protocol_name = NULL;
+            }
 
-        if (wsio_instance->received_io_lock != NULL)
-        {
-            Lock_Deinit(wsio_instance->received_io_lock);
-            wsio_instance->received_io_lock = NULL;
-        }
+            if (wsio_instance->received_io_list != NULL)
+            {
+                list_destroy(wsio_instance->received_io_list);
+                wsio_instance->received_io_list = NULL;
+            }
 
-        if (wsio_instance->pending_io_lock != NULL)
-        {
-            Lock_Deinit(wsio_instance->pending_io_lock);
-            wsio_instance->pending_io_lock = NULL;
-        }
+            if (wsio_instance->pending_io_list != NULL)
+            {
+                list_destroy(wsio_instance->pending_io_list);
+                wsio_instance->pending_io_list = NULL;
+            }
 
-        if (wsio_instance->received_io != NULL)
-        {
-            Condition_Deinit(wsio_instance->received_io);
-            wsio_instance->received_io = NULL;
-        }
+            if (wsio_instance->received_io_lock != NULL)
+            {
+                Lock_Deinit(wsio_instance->received_io_lock);
+                wsio_instance->received_io_lock = NULL;
+            }
 
-        amqpalloc_free(ws_io);
+            if (wsio_instance->pending_io_lock != NULL)
+            {
+                Lock_Deinit(wsio_instance->pending_io_lock);
+                wsio_instance->pending_io_lock = NULL;
+            }
+
+            if (wsio_instance->received_io != NULL)
+            {
+                Condition_Deinit(wsio_instance->received_io);
+                wsio_instance->received_io = NULL;
+            }
+
+            amqpalloc_free(ws_io);
+        }
     }
 }
 
