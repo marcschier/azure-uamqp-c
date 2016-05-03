@@ -29,9 +29,14 @@ connection is module that implements the connection layer in the AMQP ISO.
 
 	typedef void(*ON_ENDPOINT_FRAME_RECEIVED)(void* context, AMQP_VALUE performative, uint32_t frame_payload_size, const unsigned char* payload_bytes);
 	typedef void(*ON_CONNECTION_STATE_CHANGED)(void* context, CONNECTION_STATE new_connection_state, CONNECTION_STATE previous_connection_state);
+	typedef bool(*ON_NEW_ENDPOINT)(void* context, ENDPOINT_HANDLE new_endpoint);
 
-	extern CONNECTION_HANDLE connection_create(XIO_HANDLE xio, const char* hostname, const char* container_id);
-        extern CONNECTION_HANDLE connection_create2(XIO_HANDLE xio, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* on_connection_state_changed_context, ON_IO_ERROR on_io_error, void* on_io_error_context, LOGGER_LOG logger);
+	extern CONNECTION_HANDLE connection_create(XIO_HANDLE io, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context);
+    extern CONNECTION_HANDLE connection_create2(XIO_HANDLE xio, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* on_connection_state_changed_context, ON_IO_ERROR on_io_error, void* on_io_error_context, LOGGER_LOG logger);
+	extern void connection_destroy(CONNECTION_HANDLE connection);
+	extern int connection_open(CONNECTION_HANDLE connection);
+	extern int connection_listen(CONNECTION_HANDLE connection);
+	extern int connection_close(CONNECTION_HANDLE connection, const char* condition_value, const char* description);
 	extern int connection_set_max_frame_size(CONNECTION_HANDLE connection, uint32_t max_frame_size);
 	extern int connection_get_max_frame_size(CONNECTION_HANDLE connection, uint32_t* max_frame_size);
 	extern int connection_set_channel_max(CONNECTION_HANDLE connection, uint16_t channel_max);
@@ -39,19 +44,23 @@ connection is module that implements the connection layer in the AMQP ISO.
 	extern int connection_set_idle_timeout(CONNECTION_HANDLE connection, milliseconds idle_timeout);
 	extern int connection_get_idle_timeout(CONNECTION_HANDLE connection, milliseconds* idle_timeout);
 	extern int connection_get_remote_max_frame_size(CONNECTION_HANDLE connection, uint32_t* remote_max_frame_size);
-	extern void connection_destroy(CONNECTION_HANDLE connection);
-	extern void connection_dowork(CONNECTION_HANDLE connection);
-        extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
-
-	extern ENDPOINT_HANDLE connection_create_endpoint(CONNECTION_HANDLE connection, ON_ENDPOINT_FRAME_RECEIVED on_frame_received, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* context);
+    extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
+    extern void connection_dowork(CONNECTION_HANDLE connection);
+	extern ENDPOINT_HANDLE connection_create_endpoint(CONNECTION_HANDLE connection);
+	extern int connection_start_endpoint(ENDPOINT_HANDLE endpoint, ON_ENDPOINT_FRAME_RECEIVED on_frame_received, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* context);
+	extern int connection_endpoint_get_incoming_channel(ENDPOINT_HANDLE endpoint, uint16_t* incoming_channel);
 	extern void connection_destroy_endpoint(ENDPOINT_HANDLE endpoint);
-	extern int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performative, PAYLOAD* payloads, size_t payload_count);
+	extern int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performative, PAYLOAD* payloads, size_t payload_count, ON_SEND_COMPLETE on_send_complete, void* callback_context);
 ```
 
 ###connection_create
 
 ```C
-extern CONNECTION_HANDLE connection_create(XIO_HANDLE xio, const char* container_id);
+extern CONNECTION_HANDLE connection_create2(XIO_HANDLE xio, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* on_connection_state_changed_context, ON_IO_ERROR on_io_error, void* on_io_error_context, LOGGER_LOG logger);
+```
+
+```C
+extern CONNECTION_HANDLE connection_create(XIO_HANDLE io, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context);
 ```
 
 **SRS_CONNECTION_01_001: [**connection_create shall open a new connection to a specified host/port.**]**
@@ -153,6 +162,12 @@ extern void connection_destroy(CONNECTION_HANDLE handle);
 **SRS_CONNECTION_01_074: [**connection_destroy shall close the socket connection.**]** 
 **SRS_CONNECTION_01_075: [**If an Open frame has been sent then a Close frame shall be sent before closing the socket.**]** 
 **SRS_CONNECTION_01_079: [**If handle is NULL, connection_destroy shall do nothing.**]** 
+
+###connection_handle_deadlines
+
+```C
+extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
+```
 
 ###connection_dowork
 
