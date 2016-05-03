@@ -5,9 +5,9 @@
 #define SESSION_H
 
 #include <stdint.h>
-#include "amqpvalue.h"
-#include "amqp_frame_codec.h"
-#include "connection.h"
+#include "azure_uamqp_c/amqpvalue.h"
+#include "azure_uamqp_c/amqp_frame_codec.h"
+#include "azure_uamqp_c/connection.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +24,8 @@ extern "C" {
 		SESSION_STATE_MAPPED,
 		SESSION_STATE_END_SENT,
 		SESSION_STATE_END_RCVD,
-		SESSION_STATE_DISCARDING
+		SESSION_STATE_DISCARDING,
+		SESSION_STATE_ERROR
 	} SESSION_STATE;
 
 	typedef enum SESSION_SEND_TRANSFER_RESULT_TAG

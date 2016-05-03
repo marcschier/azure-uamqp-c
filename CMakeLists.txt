@@ -7,10 +7,10 @@ project(uamqp)
 #making a nice global variable to know if we are on linux or not.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(LINUX TRUE)
-	#on Linux, enable valgrind
-	#these commands (MEMORYCHECK...) need to apear BEFORE include(CTest) or they will not have any effect
-	find_program(MEMORYCHECK_COMMAND valgrind)	
-	set(MEMORYCHECK_COMMAND_OPTIONS "--trace-children=yes --leak-check=full --error-exitcode=1 --track-origins=yes")
+    #on Linux, enable valgrind
+    #these commands (MEMORYCHECK...) need to apear BEFORE include(CTest) or they will not have any effect
+    find_program(MEMORYCHECK_COMMAND valgrind)	
+    set(MEMORYCHECK_COMMAND_OPTIONS "--trace-children=yes --leak-check=full --error-exitcode=1 --track-origins=yes")
 endif()
 
 include (CTest)
@@ -92,7 +92,7 @@ endmacro(compileAsC11)
 
 option(memory_trace "set memory_trace to ON if memory usage is to be used, set to OFF to not use it" ON)
 
-include_directories(inc/azure_uamqp_c ${SHARED_UTIL_INC_FOLDER})
+include_directories(${CMAKE_CURRENT_LIST_DIR}/inc ${SHARED_UTIL_INC_FOLDER})
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 
@@ -202,7 +202,9 @@ add_library(uamqp
     )
 
 add_subdirectory(samples)
-add_subdirectory(tests)
+if (NOT ${skip_unittests})
+    add_subdirectory(tests)
+endif()
 
 # The following "set" statetement exports across the project a global variable
 set(UAMQP_INC_FOLDER ${CMAKE_CURRENT_LIST_DIR}/inc CACHE INTERNAL "This is the include folder for UAMQP" FORCE)

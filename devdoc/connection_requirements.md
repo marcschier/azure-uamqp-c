@@ -31,6 +31,7 @@ connection is module that implements the connection layer in the AMQP ISO.
 	typedef void(*ON_CONNECTION_STATE_CHANGED)(void* context, CONNECTION_STATE new_connection_state, CONNECTION_STATE previous_connection_state);
 
 	extern CONNECTION_HANDLE connection_create(XIO_HANDLE xio, const char* hostname, const char* container_id);
+        extern CONNECTION_HANDLE connection_create2(XIO_HANDLE xio, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* on_connection_state_changed_context, ON_IO_ERROR on_io_error, void* on_io_error_context, LOGGER_LOG logger);
 	extern int connection_set_max_frame_size(CONNECTION_HANDLE connection, uint32_t max_frame_size);
 	extern int connection_get_max_frame_size(CONNECTION_HANDLE connection, uint32_t* max_frame_size);
 	extern int connection_set_channel_max(CONNECTION_HANDLE connection, uint16_t channel_max);
@@ -40,6 +41,8 @@ connection is module that implements the connection layer in the AMQP ISO.
 	extern int connection_get_remote_max_frame_size(CONNECTION_HANDLE connection, uint32_t* remote_max_frame_size);
 	extern void connection_destroy(CONNECTION_HANDLE connection);
 	extern void connection_dowork(CONNECTION_HANDLE connection);
+        extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
+
 	extern ENDPOINT_HANDLE connection_create_endpoint(CONNECTION_HANDLE connection, ON_ENDPOINT_FRAME_RECEIVED on_frame_received, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* context);
 	extern void connection_destroy_endpoint(ENDPOINT_HANDLE endpoint);
 	extern int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performative, PAYLOAD* payloads, size_t payload_count);
@@ -417,6 +420,7 @@ Figure 2.22: Simultaneous Connection Close Sequence
 **SRS_CONNECTION_01_055: [**DISCARDING The DISCARDING state is a variant of the CLOSE SENT state where the close is triggered by an error.**]** 
 **SRS_CONNECTION_01_056: [**In this case any incoming frames on the connection MUST be silently discarded until the peer's close frame is received.**]** 
 **SRS_CONNECTION_01_057: [**END In this state it is illegal for either endpoint to write anything more onto the connection. The connection can be safely closed and discarded.**]** 
+**SRS_CONNECTION_09_001: [**ERROR In this state the connection has failed, most likely due to a socket error, and should not be reused.**]** 
 
 2.4.7 Connection State Diagram
 

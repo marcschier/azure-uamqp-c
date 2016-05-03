@@ -6,8 +6,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "amqp_frame_codec.h"
-#include "amqp_definitions.h"
+#include "azure_uamqp_c/amqp_frame_codec.h"
+#include "azure_uamqp_c/amqp_definitions.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,7 +58,10 @@ extern "C" {
 		CONNECTION_STATE_DISCARDING,
 
 		/* Codes_SRS_CONNECTION_01_057: [END In this state it is illegal for either endpoint to write anything more onto the connection. The connection can be safely closed and discarded.] */
-		CONNECTION_STATE_END
+		CONNECTION_STATE_END,
+
+		/* Codes_SRS_CONNECTION_09_001: [ERROR In this state the connection has failed, most likely due to a socket error, and should not be reused.] */
+		CONNECTION_STATE_ERROR
 	} CONNECTION_STATE;
 
 	typedef void(*ON_ENDPOINT_FRAME_RECEIVED)(void* context, AMQP_VALUE performative, uint32_t frame_payload_size, const unsigned char* payload_bytes);
@@ -66,7 +69,7 @@ extern "C" {
 	typedef bool(*ON_NEW_ENDPOINT)(void* context, ENDPOINT_HANDLE new_endpoint);
 
 	extern CONNECTION_HANDLE connection_create(XIO_HANDLE io, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context);
-    extern CONNECTION_HANDLE connection_create2(XIO_HANDLE xio, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* on_connection_state_changed_context, ON_IO_ERROR on_io_error, void* on_io_error_context, LOGGER_LOG logger);
+	extern CONNECTION_HANDLE connection_create2(XIO_HANDLE xio, const char* hostname, const char* container_id, ON_NEW_ENDPOINT on_new_endpoint, void* callback_context, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* on_connection_state_changed_context, ON_IO_ERROR on_io_error, void* on_io_error_context, LOGGER_LOG logger);
 	extern void connection_destroy(CONNECTION_HANDLE connection);
 	extern int connection_open(CONNECTION_HANDLE connection);
 	extern int connection_listen(CONNECTION_HANDLE connection);
@@ -78,8 +81,8 @@ extern "C" {
 	extern int connection_set_idle_timeout(CONNECTION_HANDLE connection, milliseconds idle_timeout);
 	extern int connection_get_idle_timeout(CONNECTION_HANDLE connection, milliseconds* idle_timeout);
 	extern int connection_get_remote_max_frame_size(CONNECTION_HANDLE connection, uint32_t* remote_max_frame_size);
-    extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
-    extern void connection_dowork(CONNECTION_HANDLE connection);
+	extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
+	extern void connection_dowork(CONNECTION_HANDLE connection);
 	extern ENDPOINT_HANDLE connection_create_endpoint(CONNECTION_HANDLE connection);
 	extern int connection_start_endpoint(ENDPOINT_HANDLE endpoint, ON_ENDPOINT_FRAME_RECEIVED on_frame_received, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* context);
 	extern int connection_endpoint_get_incoming_channel(ENDPOINT_HANDLE endpoint, uint16_t* incoming_channel);

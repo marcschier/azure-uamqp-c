@@ -6,10 +6,10 @@
 #include <crtdbg.h>
 #endif
 #include <string.h>
-#include "message_sender.h"
-#include "amqpalloc.h"
+#include "azure_uamqp_c/message_sender.h"
+#include "azure_uamqp_c/amqpalloc.h"
 #include "azure_c_shared_utility/xlogging.h"
-#include "amqpvalue_to_string.h"
+#include "azure_uamqp_c/amqpvalue_to_string.h"
 
 typedef enum MESSAGE_SEND_STATE_TAG
 {
@@ -430,6 +430,30 @@ static void set_message_sender_state(MESSAGE_SENDER_INSTANCE* message_sender_ins
 	}
 }
 
+static void indicate_all_messages_as_error(MESSAGE_SENDER_INSTANCE* message_sender_instance)
+{
+    size_t i;
+
+    for (i = 0; i < message_sender_instance->message_count; i++)
+    {
+        if (message_sender_instance->messages[i]->on_message_send_complete != NULL)
+        {
+            message_sender_instance->messages[i]->on_message_send_complete(message_sender_instance->messages[i]->context, MESSAGE_SEND_ERROR);
+        }
+
+        message_destroy(message_sender_instance->messages[i]->message);
+        amqpalloc_free(message_sender_instance->messages[i]);
+    }
+
+    if (message_sender_instance->messages != NULL)
+    {
+        message_sender_instance->message_count = 0;
+
+        amqpalloc_free(message_sender_instance->messages);
+        message_sender_instance->messages = NULL;
+    }
+}
+
 static void on_link_state_changed(void* context, LINK_STATE new_link_state, LINK_STATE previous_link_state)
 {
 	MESSAGE_SENDER_INSTANCE* message_sender_instance = (MESSAGE_SENDER_INSTANCE*)context;
@@ -447,6 +471,7 @@ static void on_link_state_changed(void* context, LINK_STATE new_link_state, LINK
             (message_sender_instance->message_sender_state == MESSAGE_SENDER_STATE_CLOSING))
         {
             /* User initiated transition, we should be good */
+            indicate_all_messages_as_error(message_sender_instance);
             set_message_sender_state(message_sender_instance, MESSAGE_SENDER_STATE_IDLE);
         }
         else if (message_sender_instance->message_sender_state != MESSAGE_SENDER_STATE_IDLE)
@@ -455,6 +480,13 @@ static void on_link_state_changed(void* context, LINK_STATE new_link_state, LINK
             set_message_sender_state(message_sender_instance, MESSAGE_SENDER_STATE_ERROR);
         }
         break;
+	case LINK_STATE_ERROR:
+		if (message_sender_instance->message_sender_state != MESSAGE_SENDER_STATE_ERROR)
+		{
+            indicate_all_messages_as_error(message_sender_instance);
+			set_message_sender_state(message_sender_instance, MESSAGE_SENDER_STATE_ERROR);
+		}
+		break;
 	}
 }
 
@@ -486,25 +518,10 @@ void messagesender_destroy(MESSAGE_SENDER_HANDLE message_sender)
 	if (message_sender != NULL)
 	{
 		MESSAGE_SENDER_INSTANCE* message_sender_instance = (MESSAGE_SENDER_INSTANCE*)message_sender;
-		size_t i;
 
 		messagesender_close(message_sender_instance);
 
-		for (i = 0; i < message_sender_instance->message_count; i++)
-		{
-			if (message_sender_instance->messages[i]->on_message_send_complete != NULL)
-			{
-				message_sender_instance->messages[i]->on_message_send_complete(message_sender_instance->messages[i]->context, MESSAGE_SEND_ERROR);
-			}
-
-			message_destroy(message_sender_instance->messages[i]->message);
-			amqpalloc_free(message_sender_instance->messages[i]);
-		}
-
-		if (message_sender_instance->messages != NULL)
-		{
-			amqpalloc_free(message_sender_instance->messages);
-		}
+        indicate_all_messages_as_error(message_sender_instance);
 
 		amqpalloc_free(message_sender);
 	}

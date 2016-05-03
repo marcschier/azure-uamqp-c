@@ -12,7 +12,7 @@
 #include <cstdio>
 #include "testrunnerswitcher.h"
 #include "micromock.h"
-#include "amqpvalue.h"
+#include "azure_uamqp_c/amqpvalue.h"
 #include <cstdint>
 
 /* Requirements satisfied by the current implementation without any code:
@@ -112,7 +112,7 @@ BEGIN_TEST_SUITE(amqpvalue_unittests)
 
         TEST_SUITE_INITIALIZE(setsBufferTempSize)
         {
-            INITIALIZE_MEMORY_DEBUG(g_dllByDll);
+            TEST_INITIALIZE_MEMORY_DEBUG(g_dllByDll);
             g_testByTest = MicroMockCreateMutex();
             ASSERT_IS_NOT_NULL(g_testByTest);
         }
@@ -120,7 +120,7 @@ BEGIN_TEST_SUITE(amqpvalue_unittests)
         TEST_SUITE_CLEANUP(TestClassCleanup)
         {
             MicroMockDestroyMutex(g_testByTest);
-            DEINITIALIZE_MEMORY_DEBUG(g_dllByDll);
+            TEST_DEINITIALIZE_MEMORY_DEBUG(g_dllByDll);
         }
 
         TEST_FUNCTION_INITIALIZE(f)
