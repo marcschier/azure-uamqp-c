@@ -612,11 +612,9 @@ void link_destroy(LINK_HANDLE link)
 {
 	if (link != NULL)
 	{
-		/* Any registered callback context might be destroyed by now */
 		link->on_link_state_changed = NULL;
-		
 		link_detach(link);
-		
+
 		session_destroy_link_endpoint(link->link_endpoint);
 		amqpvalue_destroy(link->source);
 		amqpvalue_destroy(link->target);
