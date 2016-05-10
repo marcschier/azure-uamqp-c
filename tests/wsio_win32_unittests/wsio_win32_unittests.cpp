@@ -4,11 +4,7 @@
 #include "testrunnerswitcher.h"
 #include "micromock.h"
 #include "micromockcharstararenullterminatedstrings.h"
-<<<<<<< HEAD
-#include "wsio.h"
-=======
 #include "azure_uamqp_c/wsio.h"
->>>>>>> fork/wsio
 #include "azure_c_shared_utility/xio.h"
 #include "azure_c_shared_utility/list.h"
 #include "azure_c_shared_utility/lock.h"
