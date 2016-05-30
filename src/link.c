@@ -642,9 +642,9 @@ void link_destroy(LINK_HANDLE link)
 		}
 
 		if (link->attach_properties != NULL)
-        	{
+        {
 			amqpvalue_destroy(link->attach_properties);
-        	}
+        }
 
 		amqpalloc_free(link);
 	}
@@ -987,16 +987,16 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 								{
 								default:
 								case SESSION_SEND_TRANSFER_ERROR:
-                                    list_remove(link->pending_deliveries, delivery_instance_list_item);
-                                    amqpalloc_free(pending_delivery);
-                                    result = LINK_TRANSFER_ERROR;
+									list_remove(link->pending_deliveries, delivery_instance_list_item);
+									amqpalloc_free(pending_delivery);
+									result = LINK_TRANSFER_ERROR;
 									break;
 
 								case SESSION_SEND_TRANSFER_BUSY:
-                                    /* Ensure we remove from list again since sender will attempt to transfer again on flow on */
-                                    list_remove(link->pending_deliveries, delivery_instance_list_item);
-                                    amqpalloc_free(pending_delivery);
-                                    result = LINK_TRANSFER_BUSY;
+									/* Ensure we remove from list again since sender will attempt to transfer again on flow on */
+									list_remove(link->pending_deliveries, delivery_instance_list_item);
+									amqpalloc_free(pending_delivery);
+									result = LINK_TRANSFER_BUSY;
 									break;
 
 								case SESSION_SEND_TRANSFER_OK:
