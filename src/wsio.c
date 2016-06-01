@@ -431,7 +431,7 @@ static int on_ws_callback(struct lws *wsi, enum lws_callback_reasons reason, voi
                 /* Codes_SRS_WSIO_01_129: [If any of the APIs fails and an open call is pending the on_open_complete callback shall be triggered with IO_OPEN_ERROR.] */
                 is_error = true;
             }
-            else
+            else if (wsio_instance->trusted_ca != NULL)
             {
                 /* Codes_SRS_WSIO_01_123: [Creating a new BIO by calling BIO_new.] */
                 /* Codes_SRS_WSIO_01_124: [The BIO shall be a memory one (obtained by calling BIO_s_mem).] */
@@ -675,8 +675,12 @@ void wsio_destroy(CONCRETE_IO_HANDLE ws_io)
 		amqpalloc_free(wsio_instance->host);
         amqpalloc_free(wsio_instance->protocol_name);
 		amqpalloc_free(wsio_instance->relative_path);
-		amqpalloc_free(wsio_instance->trusted_ca);
-
+        
+        if (wsio_instance->trusted_ca != NULL)
+        {
+		    amqpalloc_free(wsio_instance->trusted_ca);
+        }
+        
 		list_destroy(wsio_instance->pending_io_list);
 
 		amqpalloc_free(ws_io);
