@@ -46,7 +46,7 @@ connection is module that implements the connection layer in the AMQP ISO.
 
 	extern ENDPOINT_HANDLE connection_create_endpoint(CONNECTION_HANDLE connection, ON_ENDPOINT_FRAME_RECEIVED on_frame_received, ON_CONNECTION_STATE_CHANGED on_connection_state_changed, void* context);
 	extern void connection_destroy_endpoint(ENDPOINT_HANDLE endpoint);
-	extern int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performative, PAYLOAD* payloads, size_t payload_count, ON_SEND_COMPLETE on_send_complete, void* callback_context);
+	extern int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performative, PAYLOAD* payloads, size_t payload_count);
     extern uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection);
     extern void connection_set_trace(CONNECTION_HANDLE connection, bool traceOn);	
 ```
