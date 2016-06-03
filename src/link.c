@@ -1000,7 +1000,7 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 									break;
 
 								case SESSION_SEND_TRANSFER_OK:
-                                    link->link_credit--;
+									link->link_credit--;
 									result = LINK_TRANSFER_OK;
 									break;
 								}
