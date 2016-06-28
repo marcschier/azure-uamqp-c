@@ -15,7 +15,6 @@
 #include "azure_uamqp_c/message_receiver.h"
 #include "azure_uamqp_c/messaging.h"
 #include "azure_uamqp_c/amqpvalue_to_string.h"
-#include "azure_uamqp_c/consolelogger.h"
 
 typedef enum OPERATION_STATE_TAG
 {
@@ -477,7 +476,7 @@ AMQP_MANAGEMENT_HANDLE amqpmanagement_create(SESSION_HANDLE session, const char*
 									}
 									else
 									{
-										result->message_sender = messagesender_create(result->sender_link, on_message_sender_state_changed, result, NULL);
+										result->message_sender = messagesender_create(result->sender_link, on_message_sender_state_changed, result);
 										if (result->message_sender == NULL)
 										{
 											link_destroy(result->sender_link);

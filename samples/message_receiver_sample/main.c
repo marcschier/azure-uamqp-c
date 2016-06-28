@@ -15,7 +15,6 @@
 #include "azure_uamqp_c/amqpalloc.h"
 #include "azure_uamqp_c/saslclientio.h"
 #include "azure_uamqp_c/sasl_plain.h"
-#include "azure_uamqp_c/consolelogger.h"
 
 /* This sample connects to an Event Hub, authenticates using SASL PLAIN (key name/key) and then it received all messages for partition 0 */
 /* Replace the below settings with your own.*/
@@ -61,11 +60,11 @@ int main(int argc, char** argv)
 		/* create the TLS IO */
         TLSIO_CONFIG tls_io_config = { EH_HOST, 5671 };
 		const IO_INTERFACE_DESCRIPTION* tlsio_interface = platform_get_default_tlsio();
-		tls_io = xio_create(tlsio_interface, &tls_io_config, NULL);
+		tls_io = xio_create(tlsio_interface, &tls_io_config);
 
 		/* create the SASL client IO using the TLS IO */
 		SASLCLIENTIO_CONFIG sasl_io_config = { tls_io, sasl_mechanism_handle };
-		sasl_io = xio_create(saslclientio_get_interface_description(), &sasl_io_config, NULL);
+		sasl_io = xio_create(saslclientio_get_interface_description(), &sasl_io_config);
 
 		/* create the connection, session and link */
 		connection = connection_create(sasl_io, EH_HOST, "whatever", NULL, NULL);

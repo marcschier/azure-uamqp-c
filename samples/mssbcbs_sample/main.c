@@ -15,7 +15,6 @@
 #include "azure_uamqp_c/amqpalloc.h"
 #include "azure_uamqp_c/saslclientio.h"
 #include "azure_uamqp_c/sasl_mssbcbs.h"
-#include "azure_uamqp_c/consolelogger.h"
 #include "azure_uamqp_c/cbs.h"
 
 /* This sample connects to an IoTHub, authenticates using a CBS token and sends one message */
@@ -87,11 +86,11 @@ int main(int argc, char** argv)
 		/* create the TLS IO */
         TLSIO_CONFIG tls_io_config = { IOT_HUB_HOST, 5671 };
 		const IO_INTERFACE_DESCRIPTION* tlsio_interface = platform_get_default_tlsio();
-		tls_io = xio_create(tlsio_interface, &tls_io_config, NULL);
+		tls_io = xio_create(tlsio_interface, &tls_io_config);
 
 		/* create the SASL client IO using the TLS IO */
 		SASLCLIENTIO_CONFIG sasl_io_config = { tls_io, sasl_mechanism_handle };
-		sasl_io = xio_create(saslclientio_get_interface_description(), &sasl_io_config, NULL);
+		sasl_io = xio_create(saslclientio_get_interface_description(), &sasl_io_config);
 
 		/* create the connection, session and link */
 		connection = connection_create(sasl_io, IOT_HUB_HOST, "some", NULL, NULL);
@@ -146,7 +145,7 @@ int main(int argc, char** argv)
         amqpvalue_destroy(attach_properties);
 
 		/* create a message sender */
-		message_sender = messagesender_create(link, NULL, NULL, NULL);
+		message_sender = messagesender_create(link, NULL, NULL);
 		if (messagesender_open(message_sender) == 0)
 		{
 			uint32_t i;

@@ -13,7 +13,6 @@
 #include "azure_uamqp_c/message.h"
 #include "azure_uamqp_c/messaging.h"
 #include "azure_uamqp_c/amqpalloc.h"
-#include "azure_uamqp_c/consolelogger.h"
 
 #if _WIN32
 #include "windows.h"
@@ -34,7 +33,7 @@ int main(int argc, char** argv)
 {
 	int result;
 
-	amqpalloc_set_memory_tracing_enabled(true);
+    amqpalloc_set_memory_tracing_enabled(true);
 
 	if (platform_init() != 0)
 	{
@@ -54,7 +53,7 @@ int main(int argc, char** argv)
 		XIO_HANDLE socket_io;
 
 		SOCKETIO_CONFIG socketio_config = { "localhost", 5672, NULL };
-		socket_io = xio_create(socketio_get_interface_description(), &socketio_config, NULL);
+		socket_io = xio_create(socketio_get_interface_description(), &socketio_config);
 
 		/* create the connection, session and link */
 		connection = connection_create(socket_io, "localhost", "some", NULL, NULL);
@@ -77,7 +76,7 @@ int main(int argc, char** argv)
 		message_add_body_amqp_data(message, binary_data);
 
 		/* create a message sender */
-		message_sender = messagesender_create(link, NULL, NULL, NULL);
+		message_sender = messagesender_create(link, NULL, NULL);
 		if (messagesender_open(message_sender) == 0)
 		{
 			uint32_t i;

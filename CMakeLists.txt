@@ -33,6 +33,36 @@ else()
     option(use_wolfssl "set use_wolfssl to ON if wolfssl is to be used, set to OFF to not use wolfssl" OFF)
 endif()
 
+include(CheckSymbolExists)
+function(detect_architecture symbol arch) 
+    if (NOT DEFINED ARCHITECTURE OR ARCHITECTURE STREQUAL "")
+        set(CMAKE_REQUIRED_QUIET 1)
+        check_symbol_exists("${symbol}" "" ARCHITECTURE_${arch}) 
+        unset(CMAKE_REQUIRED_QUIET) 
+  
+        # The output variable needs to be unique across invocations otherwise 
+        # CMake's crazy scope rules will keep it defined 
+        if (ARCHITECTURE_${arch}) 
+            set(ARCHITECTURE "${arch}" PARENT_SCOPE) 
+            set(ARCHITECTURE_${arch} 1 PARENT_SCOPE) 
+            add_definitions(-DARCHITECTURE_${arch}=1) 
+        endif() 
+    endif() 
+endfunction()
+if (MSVC) 
+    detect_architecture("_M_AMD64" x86_64) 
+    detect_architecture("_M_IX86" x86) 
+    detect_architecture("_M_ARM" ARM) 
+else() 
+    detect_architecture("__x86_64__" x86_64) 
+    detect_architecture("__i386__" x86) 
+    detect_architecture("__arm__" ARM) 
+endif() 
+if (NOT DEFINED ARCHITECTURE OR ARCHITECTURE STREQUAL "")
+    set(ARCHITECTURE "GENERIC") 
+endif() 
+message(STATUS "AMQP Target architecture: ${ARCHITECTURE}")
+
 #Use solution folders. 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -56,37 +86,6 @@ endif()
 if(NOT "${compileOption_CXX}" STREQUAL "OFF")
     set(CMAKE_CXX_FLAGS "${compileOption_CXX} ${CMAKE_CXX_FLAGS}")
 endif()
-
-include(CheckSymbolExists)
-function(detect_architecture symbol arch) 
-    if (NOT DEFINED ARCHITECTURE) 
-        set(CMAKE_REQUIRED_QUIET 1)
-        check_symbol_exists("${symbol}" "" ARCHITECTURE_${arch}) 
-        unset(CMAKE_REQUIRED_QUIET) 
-  
-        # The output variable needs to be unique across invocations otherwise 
-        # CMake's crazy scope rules will keep it defined 
-        if (ARCHITECTURE_${arch}) 
-            set(ARCHITECTURE "${arch}" PARENT_SCOPE) 
-            set(ARCHITECTURE_${arch} 1 PARENT_SCOPE) 
-            add_definitions(-DARCHITECTURE_${arch}=1) 
-        endif() 
-    endif() 
-endfunction() 
-
-if (MSVC) 
-    detect_architecture("_M_AMD64" x86_64) 
-    detect_architecture("_M_IX86" x86) 
-    detect_architecture("_M_ARM" ARM) 
-else() 
-    detect_architecture("__x86_64__" x86_64) 
-    detect_architecture("__i386__" x86) 
-    detect_architecture("__arm__" ARM) 
-endif() 
-if (NOT DEFINED ARCHITECTURE) 
-    set(ARCHITECTURE "GENERIC") 
-endif() 
-message(STATUS "Target architecture: ${ARCHITECTURE}") 
 
 #this project uses several other projects that are build not by these CMakeFiles
 #this project also targets several OSes
@@ -119,8 +118,6 @@ macro(compileAsC11)
   endif()
 endmacro(compileAsC11)
 
-
-
 option(memory_trace "set memory_trace to ON if memory usage is to be used, set to OFF to not use it" ON)
 
 include_directories(${CMAKE_CURRENT_LIST_DIR}/inc ${SHARED_UTIL_INC_FOLDER})
@@ -150,11 +147,9 @@ set(uamqp_h_files
     ./inc/azure_uamqp_c/amqpvalue_to_string.h
     ./inc/azure_uamqp_c/cbs.h
     ./inc/azure_uamqp_c/connection.h
-    ./inc/azure_uamqp_c/consolelogger.h
     ./inc/azure_uamqp_c/frame_codec.h
     ./inc/azure_uamqp_c/header_detect_io.h
     ./inc/azure_uamqp_c/link.h
-    ./inc/azure_uamqp_c/logger.h
     ./inc/azure_uamqp_c/message.h
     ./inc/azure_uamqp_c/message_receiver.h
     ./inc/azure_uamqp_c/message_sender.h
@@ -178,7 +173,6 @@ set(uamqp_c_files
     ./src/amqpvalue_to_string.c
     ./src/cbs.c
     ./src/connection.c
-    ./src/consolelogger.c
     ./src/frame_codec.c
     ./src/header_detect_io.c
     ./src/link.c
@@ -231,10 +225,11 @@ add_library(uamqp
     ${wsio_h_files}
     ${socketlistener_c_files}
     )
+
 if (NOT ${ARCHITECTURE} STREQUAL "ARM")
-	add_subdirectory(samples)
+    add_subdirectory(samples)
 endif()
-	
+    
 if (NOT ${skip_unittests})
     add_subdirectory(tests)
 endif()
