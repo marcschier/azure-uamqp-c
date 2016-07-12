@@ -267,6 +267,7 @@ static void on_bytes_encoded(void* context, const unsigned char* bytes, size_t l
 static void on_bytes_encoded_no_callback(void* context, const unsigned char* bytes, size_t length, bool encode_complete)
 {
     CONNECTION_INSTANCE* connection_instance = (CONNECTION_INSTANCE*)context;
+	(void)encode_complete;
     if (xio_send(connection_instance->io, bytes, length, NULL, NULL) != 0)
     {
         xio_close(connection_instance->io, NULL, NULL);
