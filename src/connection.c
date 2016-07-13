@@ -55,6 +55,9 @@ typedef struct CONNECTION_INSTANCE_TAG
     TICK_COUNTER_HANDLE tick_counter;
     uint32_t remote_max_frame_size;
 
+    ON_SEND_COMPLETE on_send_complete;
+    void* on_send_complete_callback_context;
+
     ON_NEW_ENDPOINT on_new_endpoint;
     void* on_new_endpoint_callback_context;
 
@@ -76,44 +79,6 @@ typedef struct CONNECTION_INSTANCE_TAG
     unsigned int is_remote_frame_received : 1;
     unsigned int is_trace_on : 1;
 } CONNECTION_INSTANCE;
-
-typedef struct CONNECTION_SEND_OPERATION_INSTANCE_TAG
-{
-    CONNECTION_INSTANCE* connection;
-    ON_SEND_COMPLETE on_send_complete;
-    void* on_send_complete_callback_context;
-}
-CONNECTION_SEND_OPERATION_INSTANCE;
-
-/* Add send operation */
-static int connection_add_send_operation(CONNECTION_INSTANCE* connection, ON_SEND_COMPLETE on_send_complete, void* on_send_complete_callback_context, CONNECTION_SEND_OPERATION_INSTANCE** send_operation)
-{
-    int result;
-    CONNECTION_SEND_OPERATION_INSTANCE* send;
-
-    send = amqpalloc_malloc(sizeof(CONNECTION_SEND_OPERATION_INSTANCE));
-    if (send == NULL)
-    {
-        result = __LINE__;
-    }
-    else
-    {
-        send->connection = connection;
-        send->on_send_complete = on_send_complete;
-        send->on_send_complete_callback_context = on_send_complete_callback_context;
-
-        *send_operation = send;
-        result = 0;
-    }
-    return result;
-}
-
-static void connection_remove_send_operation(CONNECTION_SEND_OPERATION_INSTANCE* send_operation)
-{
-    send_operation->connection = NULL;
-
-    free(send_operation);
-}
 
 /* Codes_SRS_CONNECTION_01_258: [on_connection_state_changed shall be invoked whenever the connection state changes.]*/
 static void connection_set_state(CONNECTION_INSTANCE* connection_instance, CONNECTION_STATE connection_state)
@@ -251,24 +216,8 @@ static void log_outgoing_frame(AMQP_VALUE performative)
 
 static void on_bytes_encoded(void* context, const unsigned char* bytes, size_t length, bool encode_complete)
 {
-    CONNECTION_SEND_OPERATION_INSTANCE* send_instance = (CONNECTION_SEND_OPERATION_INSTANCE*)context;
-	CONNECTION_INSTANCE* connection_instance = send_instance->connection;
-	if (xio_send(connection_instance->io, bytes, length, encode_complete ? send_instance->on_send_complete : NULL, send_instance->on_send_complete_callback_context) != 0)
-	{
-		xio_close(connection_instance->io, NULL, NULL);
-		connection_set_state(connection_instance, CONNECTION_STATE_END);
-	}
-    else if (encode_complete)
-    {
-        connection_remove_send_operation(send_instance);
-    }
-}
-
-static void on_bytes_encoded_no_callback(void* context, const unsigned char* bytes, size_t length, bool encode_complete)
-{
     CONNECTION_INSTANCE* connection_instance = (CONNECTION_INSTANCE*)context;
-	(void)encode_complete;
-    if (xio_send(connection_instance->io, bytes, length, NULL, NULL) != 0)
+    if (xio_send(connection_instance->io, bytes, length, encode_complete ? connection_instance->on_send_complete : NULL, connection_instance->on_send_complete_callback_context) != 0)
     {
         xio_close(connection_instance->io, NULL, NULL);
         connection_set_state(connection_instance, CONNECTION_STATE_END);
@@ -353,7 +302,9 @@ static int send_open_frame(CONNECTION_INSTANCE* connection_instance)
                     /* Codes_SRS_CONNECTION_01_005: [The open frame describes the capabilities and limits of that peer.] */
                     /* Codes_SRS_CONNECTION_01_205: [Sending the AMQP OPEN frame shall be done by calling amqp_frame_codec_begin_encode_frame with channel number 0, the actual performative payload and 0 as payload_size.] */
                     /* Codes_SRS_CONNECTION_01_006: [The open frame can only be sent on channel 0.] */
-                    if (amqp_frame_codec_encode_frame(connection_instance->amqp_frame_codec, 0, open_performative_value, NULL, 0, on_bytes_encoded_no_callback, connection_instance) != 0)
+                    connection_instance->on_send_complete = NULL;
+                    connection_instance->on_send_complete_callback_context = NULL;
+                    if (amqp_frame_codec_encode_frame(connection_instance->amqp_frame_codec, 0, open_performative_value, NULL, 0, on_bytes_encoded, connection_instance) != 0)
                     {
                         /* Codes_SRS_CONNECTION_01_206: [If sending the frame fails, the connection shall be closed and state set to END.] */
                         xio_close(connection_instance->io, NULL, NULL);
@@ -413,7 +364,9 @@ static int send_close_frame(CONNECTION_INSTANCE* connection_instance, ERROR_HAND
             {
                 /* Codes_SRS_CONNECTION_01_215: [Sending the AMQP CLOSE frame shall be done by calling amqp_frame_codec_begin_encode_frame with channel number 0, the actual performative payload and 0 as payload_size.] */
                 /* Codes_SRS_CONNECTION_01_013: [However, implementations SHOULD send it on channel 0] */
-                if (amqp_frame_codec_encode_frame(connection_instance->amqp_frame_codec, 0, close_performative_value, NULL, 0, on_bytes_encoded_no_callback, connection_instance) != 0)
+                connection_instance->on_send_complete = NULL;
+                connection_instance->on_send_complete_callback_context = NULL;
+                if (amqp_frame_codec_encode_frame(connection_instance->amqp_frame_codec, 0, close_performative_value, NULL, 0, on_bytes_encoded, connection_instance) != 0)
                 {
                     result = __LINE__;
                 }
@@ -1435,7 +1388,8 @@ uint64_t connection_handle_deadlines(CONNECTION_HANDLE connection)
                 }
                 else
                 {
-                    if (amqp_frame_codec_encode_empty_frame(connection->amqp_frame_codec, 0, on_bytes_encoded_no_callback, connection) != 0)
+                    connection->on_send_complete = NULL;
+                    if (amqp_frame_codec_encode_empty_frame(connection->amqp_frame_codec, 0, on_bytes_encoded, connection) != 0)
                     {
                         /* close connection */
                         close_connection_with_error(connection, "amqp:internal-error", "Cannot send empty frame");
@@ -1636,14 +1590,9 @@ int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performat
     {
         CONNECTION_INSTANCE* connection = (CONNECTION_INSTANCE*)endpoint->connection;
         AMQP_FRAME_CODEC_HANDLE amqp_frame_codec = connection->amqp_frame_codec;
-        CONNECTION_SEND_OPERATION_INSTANCE* send_operation;
 
         /* Codes_SRS_CONNECTION_01_254: [If connection_encode_frame is called before the connection is in the OPENED state, connection_encode_frame shall fail and return a non-zero value.] */
         if (connection->connection_state != CONNECTION_STATE_OPENED)
-		{
-			result = __LINE__;
-		}
-        else if (connection_add_send_operation(connection, on_send_complete, callback_context, &send_operation) != 0)
         {
             result = __LINE__;
         }
@@ -1653,11 +1602,10 @@ int connection_encode_frame(ENDPOINT_HANDLE endpoint, const AMQP_VALUE performat
             /* Codes_SRS_CONNECTION_01_250: [connection_encode_frame shall initiate the frame send by calling amqp_frame_codec_begin_encode_frame.] */
             /* Codes_SRS_CONNECTION_01_251: [The channel number passed to amqp_frame_codec_begin_encode_frame shall be the outgoing channel number associated with the endpoint by connection_create_endpoint.] */
             /* Codes_SRS_CONNECTION_01_252: [The performative passed to amqp_frame_codec_begin_encode_frame shall be the performative argument of connection_encode_frame.] */
-			if (amqp_frame_codec_encode_frame(amqp_frame_codec, endpoint->outgoing_channel, performative, payloads, payload_count, on_bytes_encoded, send_operation) != 0)
+            connection->on_send_complete = on_send_complete;
+            connection->on_send_complete_callback_context = callback_context;
+            if (amqp_frame_codec_encode_frame(amqp_frame_codec, endpoint->outgoing_channel, performative, payloads, payload_count, on_bytes_encoded, connection) != 0)
             {
-                /* If this call fails no one has called called on_bytes encoded, so remove operation again */
-                connection_remove_send_operation(send_operation);
-
                 /* Codes_SRS_CONNECTION_01_253: [If amqp_frame_codec_begin_encode_frame or amqp_frame_codec_encode_payload_bytes fails, then connection_encode_frame shall fail and return a non-zero value.] */
                 result = __LINE__;
             }

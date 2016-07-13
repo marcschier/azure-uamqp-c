@@ -212,17 +212,8 @@ if(${use_wsio})
         ./src/wsio.c
     )
 else()
-if(WIN32)
-    set(wsio_h_files
-        ./inc/azure_uamqp_c/wsio.h
-    )
-    set(wsio_c_files
-        ./src/wsio_win32.c
-    )
-else()
     set(wsio_h_files)
     set(wsio_c_files)
-endif()
 endif()
 
 if(WIN32)
