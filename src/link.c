@@ -929,11 +929,10 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 			{
 				unsigned char delivery_tag_bytes[sizeof(link->delivery_count)];
 				delivery_tag delivery_tag;
+                sequence_no delivery_count = link->delivery_count + 1; 
 				bool settled;
 
-				(void)memcpy(delivery_tag_bytes, &link->delivery_count, sizeof(link->delivery_count));
-
-				link->delivery_count++;
+				(void)memcpy(delivery_tag_bytes, &delivery_count, sizeof(delivery_count));
 
 				delivery_tag.bytes = &delivery_tag_bytes;
 				delivery_tag.length = sizeof(delivery_tag_bytes);
@@ -1001,7 +1000,8 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 									break;
 
 								case SESSION_SEND_TRANSFER_OK:
-									link->link_credit--;
+                                    link->delivery_count = delivery_count;
+                                    link->link_credit--;
 									result = LINK_TRANSFER_OK;
 									break;
 								}
