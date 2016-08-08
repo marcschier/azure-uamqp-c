@@ -910,7 +910,7 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 	else
 	{
 		if ((link->role != role_sender) ||
-            (link->link_state != LINK_STATE_ATTACHED))
+			(link->link_state != LINK_STATE_ATTACHED))
 		{
 			result = LINK_TRANSFER_ERROR;
 		}
@@ -929,7 +929,7 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 			{
 				unsigned char delivery_tag_bytes[sizeof(link->delivery_count)];
 				delivery_tag delivery_tag;
-                sequence_no delivery_count = link->delivery_count + 1; 
+				sequence_no delivery_count = link->delivery_count + 1; 
 				bool settled;
 
 				(void)memcpy(delivery_tag_bytes, &delivery_count, sizeof(delivery_count));
@@ -1000,8 +1000,8 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 									break;
 
 								case SESSION_SEND_TRANSFER_OK:
-                                    link->delivery_count = delivery_count;
-                                    link->link_credit--;
+									link->delivery_count = delivery_count;
+									link->link_credit--;
 									result = LINK_TRANSFER_OK;
 									break;
 								}
