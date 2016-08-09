@@ -595,7 +595,6 @@ int messagesender_close(MESSAGE_SENDER_HANDLE message_sender)
             }
             else
             {
-                set_message_sender_state(message_sender_instance, MESSAGE_SENDER_STATE_IDLE);
                 result = 0;
             }
         }

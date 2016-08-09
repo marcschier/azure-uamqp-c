@@ -327,7 +327,6 @@ int messagereceiver_close(MESSAGE_RECEIVER_HANDLE message_receiver)
 			}
 			else
 			{
-				set_message_receiver_state(message_receiver_instance, MESSAGE_RECEIVER_STATE_IDLE);
 				result = 0;
 			}
 		}

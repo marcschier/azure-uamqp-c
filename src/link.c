@@ -369,6 +369,8 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
             {
                 set_link_state(link_instance, LINK_STATE_DETACHED);
             }
+
+            detach_destroy(detach);
         }
     }
 }
@@ -881,10 +883,13 @@ int link_detach(LINK_HANDLE link)
 			{
 				result = __LINE__;
 			}
-			else
+			else 
 			{
-				set_link_state(link, LINK_STATE_DETACHED);
-				link->on_link_state_changed = NULL;
+                if (link->link_state == LINK_STATE_HALF_ATTACHED)
+                {
+                    set_link_state(link, LINK_STATE_DETACHED);
+                    link->on_link_state_changed = NULL;
+                }
 				result = 0;
 			}
 		}
