@@ -15,7 +15,7 @@
 #include "azure_uamqp_c/amqpalloc.h"
 #include "azure_uamqp_c/amqp_frame_codec.h"
 #include "azure_c_shared_utility/xlogging.h"
-#include "azure_c_shared_utility/list.h"
+#include "azure_c_shared_utility/singlylinkedlist.h"
 
 #define DEFAULT_LINK_CREDIT 10000
 
@@ -37,7 +37,7 @@ typedef struct LINK_INSTANCE_TAG
 	handle handle;
 	LINK_ENDPOINT_HANDLE link_endpoint;
 	char* name;
-	LIST_HANDLE pending_deliveries;
+	SINGLYLINKEDLIST_HANDLE pending_deliveries;
 	sequence_no delivery_count;
 	role role;
 	ON_LINK_STATE_CHANGED on_link_state_changed;
@@ -53,6 +53,9 @@ typedef struct LINK_INSTANCE_TAG
     fields attach_properties;
     bool is_underlying_session_begun;
     bool is_closed;
+    unsigned char* received_payload;
+    uint32_t received_payload_size;
+    delivery_number received_delivery_id;
 } LINK_INSTANCE;
 
 static void set_link_state(LINK_INSTANCE* link_instance, LINK_STATE link_state)
@@ -305,7 +308,7 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
 			if (amqpvalue_get_transfer(performative, &transfer_handle) == 0)
 			{
 				AMQP_VALUE delivery_state;
-				delivery_number received_delivery_id;
+                bool more;
 
 				link_instance->link_credit--;
 				link_instance->delivery_count++;
@@ -315,24 +318,80 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
 					send_flow(link_instance);
 				}
 
-				if (transfer_get_delivery_id(transfer_handle, &received_delivery_id) != 0)
-				{
-					/* error */
-				}
-				else
-				{
-					delivery_state = link_instance->on_transfer_received(link_instance->callback_context, transfer_handle, payload_size, payload_bytes);
+                if (transfer_get_more(transfer_handle, &more) != 0)
+                {
+                    LogError("Could not get the more field from the transfer performative");
+                }
+                else
+                {
+                    bool is_error = false;
 
-					if (send_disposition(link_instance, received_delivery_id, delivery_state) != 0)
-					{
-						/* error */
-					}
+                    if (transfer_get_delivery_id(transfer_handle, &link_instance->received_delivery_id) != 0)
+                    {
+                        /* is this not a continuation transfer? */
+                        if (link_instance->received_payload_size == 0)
+                        {
+                            LogError("Could not get the delivery Id from the transfer performative");
+                            is_error = true;
+                        }
+                    }
+                    
+                    if (!is_error)
+                    {
+                        /* If this is a continuation transfer or if this is the first chunk of a multi frame transfer */
+                        if ((link_instance->received_payload_size > 0) || more)
+                        {
+                            unsigned char* new_received_payload = (unsigned char*)realloc(link_instance->received_payload, link_instance->received_payload_size + payload_size);
+                            if (new_received_payload == NULL)
+                            {
+                                LogError("Could not allocate memory for the received payload");
+                            }
+                            else
+                            {
+                                link_instance->received_payload = new_received_payload;
+                                (void)memcpy(link_instance->received_payload + link_instance->received_payload_size, payload_bytes, payload_size);
+                                link_instance->received_payload_size += payload_size;
+                            }
+                        }
 
-					if (delivery_state != NULL)
-					{
-						amqpvalue_destroy(delivery_state);
-					}
-				}
+                        if (!more)
+                        {
+                            const unsigned char* indicate_payload_bytes;
+                            uint32_t indicate_payload_size;
+
+                            /* if no previously stored chunks then simply report the current payload */
+                            if (link_instance->received_payload_size > 0)
+                            {
+                                indicate_payload_size = link_instance->received_payload_size;
+                                indicate_payload_bytes = link_instance->received_payload;
+                            }
+                            else
+                            {
+                                indicate_payload_size = payload_size;
+                                indicate_payload_bytes = payload_bytes;
+                            }
+
+                            delivery_state = link_instance->on_transfer_received(link_instance->callback_context, transfer_handle, indicate_payload_size, indicate_payload_bytes);
+
+                            if (link_instance->received_payload_size > 0)
+                            {
+                                free(link_instance->received_payload);
+                                link_instance->received_payload = NULL;
+                                link_instance->received_payload_size = 0;
+                            }
+
+                            if (send_disposition(link_instance, link_instance->received_delivery_id, delivery_state) != 0)
+                            {
+                                LogError("Cannot send disposition frame");
+                            }
+
+                            if (delivery_state != NULL)
+                            {
+                                amqpvalue_destroy(delivery_state);
+                            }
+                        }
+                    }
+                }
 
 				transfer_destroy(transfer_handle);
 			}
@@ -371,11 +430,11 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
 
                 if (settled)
                 {
-                    LIST_ITEM_HANDLE pending_delivery = list_get_head_item(link_instance->pending_deliveries);
+                    LIST_ITEM_HANDLE pending_delivery = singlylinkedlist_get_head_item(link_instance->pending_deliveries);
                     while (pending_delivery != NULL)
                     {
-                        LIST_ITEM_HANDLE next_pending_delivery = list_get_next_item(pending_delivery);
-                        DELIVERY_INSTANCE* delivery_instance = (DELIVERY_INSTANCE*)list_item_get_value(pending_delivery);
+                        LIST_ITEM_HANDLE next_pending_delivery = singlylinkedlist_get_next_item(pending_delivery);
+                        DELIVERY_INSTANCE* delivery_instance = (DELIVERY_INSTANCE*)singlylinkedlist_item_get_value(pending_delivery);
                         if (delivery_instance == NULL)
                         {
                             /* error */
@@ -394,7 +453,7 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
                                 {
                                     delivery_instance->on_delivery_settled(delivery_instance->callback_context, delivery_instance->delivery_id, delivery_state);
                                     amqpalloc_free(delivery_instance);
-                                    if (list_remove(link_instance->pending_deliveries, pending_delivery) != 0)
+                                    if (singlylinkedlist_remove(link_instance->pending_deliveries, pending_delivery) != 0)
                                     {
                                         /* error */
                                         break;
@@ -499,14 +558,14 @@ static void on_session_flow_on(void* context)
 static void on_send_complete(void* context, IO_SEND_RESULT send_result)
 {
 	LIST_ITEM_HANDLE delivery_instance_list_item = (LIST_ITEM_HANDLE)context;
-	DELIVERY_INSTANCE* delivery_instance = (DELIVERY_INSTANCE*)list_item_get_value(delivery_instance_list_item);
+	DELIVERY_INSTANCE* delivery_instance = (DELIVERY_INSTANCE*)singlylinkedlist_item_get_value(delivery_instance_list_item);
 	LINK_INSTANCE* link_instance = (LINK_INSTANCE*)delivery_instance->link;
     (void)send_result;
 	if (link_instance->snd_settle_mode == sender_settle_mode_settled)
 	{
 		delivery_instance->on_delivery_settled(delivery_instance->callback_context, delivery_instance->delivery_id, NULL);
 		amqpalloc_free(delivery_instance);
-		(void)list_remove(link_instance->pending_deliveries, delivery_instance_list_item);
+		(void)singlylinkedlist_remove(link_instance->pending_deliveries, delivery_instance_list_item);
 	}
 }
 
@@ -530,8 +589,11 @@ LINK_HANDLE link_create(SESSION_HANDLE session, const char* name, role role, AMQ
 		result->is_underlying_session_begun = false;
         result->is_closed = false;
         result->attach_properties = NULL;
+        result->received_payload = NULL;
+        result->received_payload_size = 0;
+        result->received_delivery_id = 0;
 
-		result->pending_deliveries = list_create();
+		result->pending_deliveries = singlylinkedlist_create();
 		if (result->pending_deliveries == NULL)
 		{
 			amqpalloc_free(result);
@@ -542,7 +604,7 @@ LINK_HANDLE link_create(SESSION_HANDLE session, const char* name, role role, AMQ
 			result->name = amqpalloc_malloc(strlen(name) + 1);
 			if (result->name == NULL)
 			{
-				list_destroy(result->pending_deliveries);
+				singlylinkedlist_destroy(result->pending_deliveries);
 				amqpalloc_free(result);
 				result = NULL;
 			}
@@ -556,7 +618,7 @@ LINK_HANDLE link_create(SESSION_HANDLE session, const char* name, role role, AMQ
 				result->link_endpoint = session_create_link_endpoint(session, name);
 				if (result->link_endpoint == NULL)
 				{
-					list_destroy(result->pending_deliveries);
+					singlylinkedlist_destroy(result->pending_deliveries);
 					amqpalloc_free(result->name);
 					amqpalloc_free(result);
 					result = NULL;
@@ -585,6 +647,9 @@ LINK_HANDLE link_create_from_endpoint(SESSION_HANDLE session, LINK_ENDPOINT_HAND
 		result->is_underlying_session_begun = false;
         result->is_closed = false;
         result->attach_properties = NULL;
+        result->received_payload = NULL;
+        result->received_payload_size = 0;
+        result->received_delivery_id = 0;
         result->source = amqpvalue_clone(target);
 		result->target = amqpvalue_clone(source);
 		if (role == role_sender)
@@ -596,7 +661,7 @@ LINK_HANDLE link_create_from_endpoint(SESSION_HANDLE session, LINK_ENDPOINT_HAND
 			result->role = role_sender;
 		}
 
-		result->pending_deliveries = list_create();
+		result->pending_deliveries = singlylinkedlist_create();
 		if (result->pending_deliveries == NULL)
 		{
 			amqpalloc_free(result);
@@ -607,7 +672,7 @@ LINK_HANDLE link_create_from_endpoint(SESSION_HANDLE session, LINK_ENDPOINT_HAND
 			result->name = amqpalloc_malloc(strlen(name) + 1);
 			if (result->name == NULL)
 			{
-				list_destroy(result->pending_deliveries);
+				singlylinkedlist_destroy(result->pending_deliveries);
 				amqpalloc_free(result);
 				result = NULL;
 			}
@@ -635,11 +700,11 @@ void link_destroy(LINK_HANDLE link)
 		amqpvalue_destroy(link->target);
 		if (link->pending_deliveries != NULL)
 		{
-			LIST_ITEM_HANDLE item = list_get_head_item(link->pending_deliveries);
+			LIST_ITEM_HANDLE item = singlylinkedlist_get_head_item(link->pending_deliveries);
 			while (item != NULL)
 			{
-				LIST_ITEM_HANDLE next_item = list_get_next_item(item);
-				DELIVERY_INSTANCE* delivery_instance = (DELIVERY_INSTANCE*)list_item_get_value(item);
+				LIST_ITEM_HANDLE next_item = singlylinkedlist_get_next_item(item);
+				DELIVERY_INSTANCE* delivery_instance = (DELIVERY_INSTANCE*)singlylinkedlist_item_get_value(item);
 				if (delivery_instance != NULL)
 				{
 					amqpalloc_free(delivery_instance);
@@ -648,7 +713,7 @@ void link_destroy(LINK_HANDLE link)
 				item = next_item;
 			}
 
-			list_destroy(link->pending_deliveries);
+			singlylinkedlist_destroy(link->pending_deliveries);
 		}
 
 		if (link->name != NULL)
@@ -659,6 +724,11 @@ void link_destroy(LINK_HANDLE link)
 		if (link->attach_properties != NULL)
         {
 			amqpvalue_destroy(link->attach_properties);
+        }
+
+        if (link->received_payload != NULL)
+        {
+            free(link->received_payload);
         }
 
 		amqpalloc_free(link);
@@ -862,6 +932,8 @@ int link_attach(LINK_HANDLE link, ON_TRANSFER_RECEIVED on_transfer_received, ON_
 				}
 				else
 				{
+                    link->received_payload_size = 0;
+
 					result = 0;
 				}
 			}
@@ -1005,7 +1077,7 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 							pending_delivery->on_delivery_settled = on_delivery_settled;
 							pending_delivery->callback_context = callback_context;
 							pending_delivery->link = link;
-							delivery_instance_list_item = list_add(link->pending_deliveries, pending_delivery);
+							delivery_instance_list_item = singlylinkedlist_add(link->pending_deliveries, pending_delivery);
 
 							if (delivery_instance_list_item == NULL)
 							{
@@ -1019,14 +1091,14 @@ LINK_TRANSFER_RESULT link_transfer(LINK_HANDLE link, message_format message_form
 								{
 								default:
 								case SESSION_SEND_TRANSFER_ERROR:
-									list_remove(link->pending_deliveries, delivery_instance_list_item);
+									singlylinkedlist_remove(link->pending_deliveries, delivery_instance_list_item);
 									amqpalloc_free(pending_delivery);
 									result = LINK_TRANSFER_ERROR;
 									break;
 
 								case SESSION_SEND_TRANSFER_BUSY:
 									/* Ensure we remove from list again since sender will attempt to transfer again on flow on */
-									list_remove(link->pending_deliveries, delivery_instance_list_item);
+									singlylinkedlist_remove(link->pending_deliveries, delivery_instance_list_item);
 									amqpalloc_free(pending_delivery);
 									result = LINK_TRANSFER_BUSY;
 									break;
